@@ -1,8 +1,9 @@
-import { Settings, Rocket, GaugeCircle, LayoutGrid, SlidersHorizontal, FileText, ChevronDown, PanelLeftClose, PanelLeftOpen, ShieldCheck } from 'lucide-react';
+import { Settings, GaugeCircle, LayoutGrid, SlidersHorizontal, FileText, ChevronDown, PanelLeftClose, PanelLeftOpen, ShieldCheck } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useState, useRef, useCallback, useEffect, useLayoutEffect, useMemo, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import apiKeyFunIcon from '../../assets/icons/apikey-fun.png';
+import appLogo from '../../../app-icon.svg';
 import { Page } from '../../types/navigation';
 import { isMenuVisiblePlatform, PlatformId, PLATFORM_PAGE_MAP } from '../../types/platform';
 import {
@@ -899,7 +900,7 @@ export function SideNav({
             onClick={handleLogoClick}
             title={hasBreakoutSession ? t('breakout.resumeGameNav', '继续游戏') : undefined}
           >
-            <Rocket size={isClassicLayout ? classicBrandLogoIconSize : 20} />
+            <img src={appLogo} alt="AIModel Switch" width={isClassicLayout ? classicBrandLogoIconSize + 12 : 32} height={isClassicLayout ? classicBrandLogoIconSize + 12 : 32} />
             {hasBreakoutSession && <span className="rocket-session-indicator" aria-hidden="true" />}
             {!hasBreakoutSession && easterEggClickCount > 0 && (
               <span className="rocket-click-count">{easterEggClickCount}</span>
