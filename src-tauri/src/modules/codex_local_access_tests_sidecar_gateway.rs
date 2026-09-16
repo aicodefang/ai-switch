@@ -3133,9 +3133,9 @@ http_headers = { "x-cockpit-instance-id" = "default" }
         fn new(prefix: &str) -> Self {
             let data_dir = make_temp_dir(prefix);
             let previous_test_data_dir = std::env::var("COCKPIT_TOOLS_TEST_DATA_DIR").ok();
-            let previous_data_dir = std::env::var("COCKPIT_TOOLS_DATA_DIR").ok();
+            let previous_data_dir = std::env::var("AIMODEL_SWITCH_DATA_DIR").ok();
             std::env::set_var("COCKPIT_TOOLS_TEST_DATA_DIR", &data_dir);
-            std::env::set_var("COCKPIT_TOOLS_DATA_DIR", &data_dir);
+            std::env::set_var("AIMODEL_SWITCH_DATA_DIR", &data_dir);
 
             let takeover_backup_path =
                 super::local_access_takeover_backups_path().expect("resolve takeover backup path");
@@ -3161,8 +3161,8 @@ http_headers = { "x-cockpit-instance-id" = "default" }
                 None => std::env::remove_var("COCKPIT_TOOLS_TEST_DATA_DIR"),
             }
             match self.previous_data_dir.as_deref() {
-                Some(value) => std::env::set_var("COCKPIT_TOOLS_DATA_DIR", value),
-                None => std::env::remove_var("COCKPIT_TOOLS_DATA_DIR"),
+                Some(value) => std::env::set_var("AIMODEL_SWITCH_DATA_DIR", value),
+                None => std::env::remove_var("AIMODEL_SWITCH_DATA_DIR"),
             }
             match self.previous_takeover_backup.as_deref() {
                 Some(content) => {

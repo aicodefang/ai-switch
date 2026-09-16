@@ -9,6 +9,27 @@ fn link_macos_swift_runtime_rpaths() {
     println!("cargo:rustc-link-arg=-Wl,-rpath,/usr/lib/swift");
 }
 
+// Optional fallback for CLT installations with mismatched PackageDescription interfaces.
+// Compiles the exact same native menu sources; no native functionality is disabled.
+#[cfg(target_os = "macos")]
+fn build_native_menu_direct() {
+    let source_dir = PathBuf::from("native/macos-native-menu/Sources/MacosNativeMenuSwift");
+    let output_dir = PathBuf::from(std::env::var("OUT_DIR").unwrap());
+    let arch = if std::env::var("CARGO_CFG_TARGET_ARCH").unwrap() == "aarch64" { "arm64" } else { "x86_64" };
+    let sdk = Command::new("xcrun").args(["--sdk", "macosx", "--show-sdk-path"]).output().expect("find macOS SDK");
+    assert!(sdk.status.success(), "Unable to find macOS SDK");
+    let mut command = Command::new("xcrun");
+    command.args(["swiftc", "-parse-as-library", "-emit-library", "-static", "-O", "-swift-version", "5", "-module-name", "MacosNativeMenuSwift", "-target", &format!("{arch}-apple-macosx12.0"), "-sdk", String::from_utf8_lossy(&sdk.stdout).trim()]);
+    let mut files: Vec<_> = std::fs::read_dir(&source_dir).unwrap().flatten().map(|e| e.path()).filter(|p| p.extension().and_then(|x| x.to_str()) == Some("swift")).collect();
+    files.sort();
+    command.args(files).arg("-o").arg(output_dir.join("libMacosNativeMenuSwift.a"));
+    assert!(command.status().expect("start swiftc").success(), "Native menu compilation failed");
+    SwiftLinker::new("12.0").link();
+    println!("cargo:rerun-if-changed={}", source_dir.display());
+    println!("cargo:rustc-link-search=native={}", output_dir.display());
+    println!("cargo:rustc-link-lib=static=MacosNativeMenuSwift");
+}
+
 fn go_target_from_rust_target(target: &str) -> Option<(&'static str, &'static str)> {
     let goos = if target.contains("windows") {
         "windows"
@@ -180,9 +201,14 @@ fn main() {
 
     #[cfg(target_os = "macos")]
     {
+        println!("cargo:rerun-if-env-changed=AIMODEL_DIRECT_SWIFT");
+        if std::env::var("AIMODEL_DIRECT_SWIFT").as_deref() == Ok("1") {
+            build_native_menu_direct();
+        } else {
         SwiftLinker::new("12.0")
             .with_package("MacosNativeMenuSwift", "native/macos-native-menu")
             .link();
+        }
         link_macos_swift_runtime_rpaths();
     }
 

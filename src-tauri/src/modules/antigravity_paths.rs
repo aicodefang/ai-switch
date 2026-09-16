@@ -148,19 +148,19 @@ pub fn managed_instances_root_dir() -> Result<PathBuf, String> {
     #[cfg(target_os = "macos")]
     {
         let home = dirs::home_dir().ok_or("无法获取用户主目录")?;
-        return Ok(home.join(".antigravity_cockpit/instances/antigravity"));
+        return Ok(home.join(".aimodel_switch/instances/antigravity"));
     }
 
     #[cfg(target_os = "windows")]
     {
         let roaming_dir = roaming_app_data_dir()?;
-        return Ok(roaming_dir.join(".antigravity_cockpit\\instances\\antigravity"));
+        return Ok(roaming_dir.join(".aimodel_switch\\instances\\antigravity"));
     }
 
     #[cfg(target_os = "linux")]
     {
         let home = dirs::home_dir().ok_or("无法获取用户主目录")?;
-        return Ok(home.join(".antigravity_cockpit/instances/antigravity"));
+        return Ok(home.join(".aimodel_switch/instances/antigravity"));
     }
 
     #[allow(unreachable_code)]
@@ -171,19 +171,19 @@ pub fn legacy_managed_instances_root_dir() -> Result<PathBuf, String> {
     #[cfg(target_os = "macos")]
     {
         let home = dirs::home_dir().ok_or("无法获取用户主目录")?;
-        return Ok(home.join(".antigravity_cockpit/instances/antigravity-legacy"));
+        return Ok(home.join(".aimodel_switch/instances/antigravity-legacy"));
     }
 
     #[cfg(target_os = "windows")]
     {
         let roaming_dir = roaming_app_data_dir()?;
-        return Ok(roaming_dir.join(".antigravity_cockpit\\instances\\antigravity-legacy"));
+        return Ok(roaming_dir.join(".aimodel_switch\\instances\\antigravity-legacy"));
     }
 
     #[cfg(target_os = "linux")]
     {
         let home = dirs::home_dir().ok_or("无法获取用户主目录")?;
-        return Ok(home.join(".antigravity_cockpit/instances/antigravity-legacy"));
+        return Ok(home.join(".aimodel_switch/instances/antigravity-legacy"));
     }
 
     #[allow(unreachable_code)]

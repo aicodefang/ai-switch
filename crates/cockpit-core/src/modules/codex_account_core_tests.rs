@@ -53,10 +53,10 @@
 
             let previous_home = std::env::var_os("HOME");
             let previous_codex_home = std::env::var_os("CODEX_HOME");
-            let previous_data_dir = std::env::var_os("COCKPIT_TOOLS_DATA_DIR");
+            let previous_data_dir = std::env::var_os("AIMODEL_SWITCH_DATA_DIR");
             std::env::set_var("HOME", &home_dir);
             std::env::set_var("CODEX_HOME", &codex_home);
-            std::env::set_var("COCKPIT_TOOLS_DATA_DIR", &home_dir);
+            std::env::set_var("AIMODEL_SWITCH_DATA_DIR", &home_dir);
 
             Self {
                 home_dir,
@@ -82,8 +82,8 @@
                 None => std::env::remove_var("CODEX_HOME"),
             }
             match self.previous_data_dir.as_ref() {
-                Some(value) => std::env::set_var("COCKPIT_TOOLS_DATA_DIR", value),
-                None => std::env::remove_var("COCKPIT_TOOLS_DATA_DIR"),
+                Some(value) => std::env::set_var("AIMODEL_SWITCH_DATA_DIR", value),
+                None => std::env::remove_var("AIMODEL_SWITCH_DATA_DIR"),
             }
             let _ = fs::remove_dir_all(&self.home_dir);
         }
@@ -92,7 +92,7 @@
     #[test]
     fn test_env_guard_isolates_and_restores_cockpit_data_dir() {
         let _lock = TEST_ENV_LOCK.lock().unwrap_or_else(|err| err.into_inner());
-        let previous_data_dir = std::env::var_os("COCKPIT_TOOLS_DATA_DIR");
+        let previous_data_dir = std::env::var_os("AIMODEL_SWITCH_DATA_DIR");
         let isolated_data_dir = {
             let env = TestEnvGuard::new("codex-core-data-dir-guard-test");
             let legacy_data_dir = env.home_dir.join("legacy-codex-data");
@@ -115,7 +115,7 @@
         };
 
         assert_eq!(
-            std::env::var_os("COCKPIT_TOOLS_DATA_DIR"),
+            std::env::var_os("AIMODEL_SWITCH_DATA_DIR"),
             previous_data_dir
         );
         assert!(!isolated_data_dir.exists());

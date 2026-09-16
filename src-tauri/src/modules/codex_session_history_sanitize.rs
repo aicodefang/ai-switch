@@ -196,7 +196,7 @@ fn one_time_sanitize_state_path() -> PathBuf {
         .unwrap_or_else(|_| {
             dirs::home_dir()
                 .unwrap_or_else(|| PathBuf::from("."))
-                .join(".antigravity_cockpit")
+                .join(".aimodel_switch")
         })
         .join(ONE_TIME_MIGRATION_STATE_FILE)
 }

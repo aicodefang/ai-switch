@@ -1,4 +1,5 @@
 import { Page } from './navigation';
+import { isFocusedPlatform } from '../productScope';
 
 export type PlatformId =
   | 'antigravity'
@@ -52,7 +53,7 @@ export function isAccountPlatform(platformId: PlatformId): boolean {
   return !ACCOUNTLESS_PLATFORM_IDS.includes(platformId);
 }
 
-export const MENU_HIDDEN_PLATFORM_IDS: PlatformId[] = [];
+export const MENU_HIDDEN_PLATFORM_IDS: PlatformId[] = ALL_PLATFORM_IDS.filter(id => !isFocusedPlatform(id));
 
 export const MENU_VISIBLE_PLATFORM_IDS: PlatformId[] = ALL_PLATFORM_IDS.filter(
   (platformId) => !MENU_HIDDEN_PLATFORM_IDS.includes(platformId),

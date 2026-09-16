@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { UPSTREAM_REMOTE_SERVICES_ENABLED } from '../productScope';
 import type { PlatformId } from '../types/platform';
 import type { RemoteConfigState } from '../types/remoteConfig';
 import {
@@ -36,6 +37,10 @@ export const useRemoteConfigStore = create<RemoteConfigStoreState>((set) => ({
   lastError: null,
 
   fetchState: async (force = false) => {
+    if (!UPSTREAM_REMOTE_SERVICES_ENABLED) {
+      set({state: EMPTY_STATE, initialized: true, loading: false, hiddenPlatformIds: []});
+      return EMPTY_STATE;
+    }
     set({ loading: true });
     try {
       const nextState = force

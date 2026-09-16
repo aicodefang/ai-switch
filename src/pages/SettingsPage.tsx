@@ -490,22 +490,6 @@ export function useSettingsPageController() {
   const menuBarQuotaPlatformOptions: Array<{ value: PlatformId; label: string }> = [
     { value: 'codex', label: 'Codex' },
     { value: 'claude_manager', label: 'Claude' },
-    { value: 'antigravity', label: 'Antigravity' },
-    { value: 'github-copilot', label: 'GitHub Copilot' },
-    { value: 'windsurf', label: 'Windsurf' },
-    { value: 'kiro', label: 'Kiro' },
-    { value: 'cursor', label: 'Cursor' },
-    { value: 'grok', label: 'Grok' },
-    { value: 'codebuddy', label: 'CodeBuddy' },
-    { value: 'codebuddy_cn', label: 'CodeBuddy CN' },
-    { value: 'qoder', label: 'Qoder' },
-    { value: 'zcode', label: 'ZCode' },
-    { value: 'trae', label: 'Trae' },
-    { value: 'trae_solo', label: 'TRAE SOLO' },
-    { value: 'trae_cn', label: 'Trae CN' },
-    { value: 'trae_solo_cn', label: 'TRAE SOLO CN' },
-    { value: 'workbuddy', label: 'WorkBuddy' },
-    { value: 'zed', label: 'Zed' },
   ];
   
   // General Settings States

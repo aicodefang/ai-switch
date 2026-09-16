@@ -6,7 +6,7 @@ mod legacy_platform_adapter_cleanup_tests {
 
     #[test]
     fn matches_orphaned_legacy_platform_adapter() {
-        let line = " 1359     1 /Users/jieli/.antigravity_cockpit/platform-packages/codex/current/adapter/macos/cockpit-codex-adapter";
+        let line = " 1359     1 /Users/jieli/.aimodel_switch/platform-packages/codex/current/adapter/macos/cockpit-codex-adapter";
         assert_eq!(
             orphaned_legacy_platform_adapter_pid_from_ps_line(line, 99999),
             Some(1359)
@@ -15,13 +15,13 @@ mod legacy_platform_adapter_cleanup_tests {
 
     #[test]
     fn ignores_non_orphaned_or_current_processes() {
-        let line = " 1359 1805 /Users/jieli/.antigravity_cockpit/platform-packages/codex/current/adapter/macos/cockpit-codex-adapter";
+        let line = " 1359 1805 /Users/jieli/.aimodel_switch/platform-packages/codex/current/adapter/macos/cockpit-codex-adapter";
         assert_eq!(
             orphaned_legacy_platform_adapter_pid_from_ps_line(line, 99999),
             None
         );
 
-        let current_line = " 1359 1 /Users/jieli/.antigravity_cockpit/platform-packages/codex/current/adapter/macos/cockpit-codex-adapter";
+        let current_line = " 1359 1 /Users/jieli/.aimodel_switch/platform-packages/codex/current/adapter/macos/cockpit-codex-adapter";
         assert_eq!(
             orphaned_legacy_platform_adapter_pid_from_ps_line(current_line, 1359),
             None
@@ -83,8 +83,8 @@ mod managed_sidecar_port_cleanup_tests {
     #[test]
     fn requires_expected_sidecar_binary_and_config_path() {
         let config =
-            Path::new("/Users/demo/.antigravity_cockpit/codex_local_access_sidecar/config.json");
-        let command = "/Applications/Cockpit Tools.app/Contents/MacOS/cockpit-cliproxy --config /Users/demo/.antigravity_cockpit/codex_local_access_sidecar/config.json --parent-pid 1805";
+            Path::new("/Users/demo/.aimodel_switch/codex_local_access_sidecar/config.json");
+        let command = "/Applications/Cockpit Tools.app/Contents/MacOS/cockpit-cliproxy --config /Users/demo/.aimodel_switch/codex_local_access_sidecar/config.json --parent-pid 1805";
         assert!(managed_sidecar_command_matches(
             command,
             "cockpit-cliproxy",
@@ -96,7 +96,7 @@ mod managed_sidecar_port_cleanup_tests {
             Path::new("/Users/demo/another/config.json")
         ));
         assert!(!managed_sidecar_command_matches(
-            "python server.py --config /Users/demo/.antigravity_cockpit/codex_local_access_sidecar/config.json",
+            "python server.py --config /Users/demo/.aimodel_switch/codex_local_access_sidecar/config.json",
             "cockpit-cliproxy",
             config
         ));

@@ -686,7 +686,7 @@ impl TestEnvGuard {
     fn new(prefix: &str) -> Self {
         let home_dir = make_temp_dir(prefix);
         let codex_home = home_dir.join(".codex");
-        let test_data_dir = home_dir.join(".antigravity_cockpit");
+        let test_data_dir = home_dir.join(".aimodel_switch");
         fs::create_dir_all(&codex_home).expect("create codex home");
         fs::create_dir_all(&test_data_dir).expect("create test data dir");
 
@@ -694,11 +694,11 @@ impl TestEnvGuard {
         let previous_codex_home = std::env::var("CODEX_HOME").ok();
         let previous_data_dir = std::env::var("COCKPIT_TOOLS_TEST_DATA_DIR")
             .ok()
-            .or_else(|| std::env::var("COCKPIT_TOOLS_DATA_DIR").ok());
+            .or_else(|| std::env::var("AIMODEL_SWITCH_DATA_DIR").ok());
         std::env::set_var("HOME", &home_dir);
         std::env::set_var("CODEX_HOME", &codex_home);
         std::env::set_var("COCKPIT_TOOLS_TEST_DATA_DIR", &test_data_dir);
-        std::env::set_var("COCKPIT_TOOLS_DATA_DIR", &test_data_dir);
+        std::env::set_var("AIMODEL_SWITCH_DATA_DIR", &test_data_dir);
 
         Self {
             home_dir,
@@ -726,11 +726,11 @@ impl Drop for TestEnvGuard {
         match self.previous_data_dir.as_ref() {
             Some(value) => {
                 std::env::set_var("COCKPIT_TOOLS_TEST_DATA_DIR", value);
-                std::env::set_var("COCKPIT_TOOLS_DATA_DIR", value);
+                std::env::set_var("AIMODEL_SWITCH_DATA_DIR", value);
             }
             None => {
                 std::env::remove_var("COCKPIT_TOOLS_TEST_DATA_DIR");
-                std::env::remove_var("COCKPIT_TOOLS_DATA_DIR");
+                std::env::remove_var("AIMODEL_SWITCH_DATA_DIR");
             }
         }
         let _ = fs::remove_dir_all(&self.home_dir);
@@ -1227,7 +1227,7 @@ fn token_refresh_file_lock_is_scoped_to_install_data_dir() {
 
     assert!(path.starts_with(
         env.home_dir
-            .join(".antigravity_cockpit/.cockpit-token-locks")
+            .join(".aimodel_switch/.cockpit-token-locks")
     ));
     assert!(!path.to_string_lossy().contains("codex-account-id"));
     assert_eq!(

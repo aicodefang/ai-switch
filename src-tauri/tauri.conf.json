@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Cockpit Tools",
-  "version": "1.3.53",
-  "identifier": "com.jlcodes.cockpit-tools",
+  "productName": "AIModel Switch",
+  "version": "0.2.0",
+  "identifier": "io.aicodefang.aimodel-switch",
   "build": {
     "beforeDevCommand": "node scripts/prepare-tauri.cjs && npm run dev",
     "devUrl": "http://localhost:1420",
@@ -14,7 +14,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Cockpit Tools",
+        "title": "AIModel Switch",
         "width": 1280,
         "height": 800,
         "minWidth": 900,
@@ -27,7 +27,7 @@
       },
       {
         "label": "floating-card",
-        "title": "Cockpit Tools",
+        "title": "AIModel Switch",
         "create": false,
         "width": 250,
         "height": 290,
@@ -49,7 +49,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "createUpdaterArtifacts": true,
+    "createUpdaterArtifacts": false,
     "externalBin": [
       "../sidecars/cockpit-cliproxy/bin/cockpit-cliproxy"
     ],
@@ -97,7 +97,7 @@
       "../src/assets/icons/zcode.png": "native-menu-icons/zcode.png"
     },
     "macOS": {
-      "bundleName": "Cockpit Tools",
+      "bundleName": "AIModel Switch",
       "infoPlist": "Info.plist"
     }
   },
@@ -105,18 +105,13 @@
     "deep-link": {
       "desktop": {
         "schemes": [
-          "cockpit-tools",
-          "cockpittools",
-          "zcode"
+          "aimodel-switch"
         ]
       }
     },
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEMxRkU1RTdBRDdCRUUzM0QKUldROTQ3N1hlbDcrd1ZVQ2E3b1ZoVUdXL3BWQmpjdzNnWllNUW1LNHVwcE9wdGI1Q1UxQmdnQ0oK",
-      "endpoints": [
-        "https://github.com/jlcodes99/cockpit-tools/releases/latest/download/latest-{{target}}.json",
-        "https://github.com/jlcodes99/cockpit-tools/releases/latest/download/latest.json"
-      ]
+      "endpoints": []
     }
   }
 }

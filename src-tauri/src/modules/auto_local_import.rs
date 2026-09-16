@@ -661,6 +661,7 @@ fn collect_peek_decisions(mode: WatchMode) -> (u32, Vec<PeekDecision>) {
     let mut pending = Vec::new();
 
     for watcher in platform_watchers() {
+        if watcher.platform != "codex" && watcher.platform != "claude" { continue; }
         let current_identity = (watcher.peek_identity)();
         let Some(current_identity) = current_identity else {
             if let Ok(mut state) = LAST_IDENTITIES.lock() {

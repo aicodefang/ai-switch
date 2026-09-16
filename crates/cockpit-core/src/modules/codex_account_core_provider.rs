@@ -876,22 +876,22 @@ fn write_api_key_provider_to_config_toml(
     write_api_provider_to_config_toml(base_dir, &builtin_openai_config)
 }
 
-/// 旧版数据目录（~/Library/Application Support/com.antigravity.cockpit-tools/）
+/// 旧版数据目录（~/Library/Application Support/io.aicodefang.aimodel-switch.legacy/）
 fn get_old_codex_data_dir() -> PathBuf {
     #[cfg(test)]
-    if let Some(data_dir) = std::env::var_os("COCKPIT_TOOLS_DATA_DIR") {
+    if let Some(data_dir) = std::env::var_os("AIMODEL_SWITCH_DATA_DIR") {
         return PathBuf::from(data_dir).join("legacy-codex-data");
     }
 
     dirs::data_local_dir()
         .unwrap_or_else(|| dirs::home_dir().expect("无法获取用户目录"))
-        .join("com.antigravity.cockpit-tools")
+        .join("io.aicodefang.aimodel-switch.legacy")
 }
 
 /// 将旧目录中的 codex 数据迁移到新目录（一次性，迁移成功后删除旧文件）
 fn migrate_codex_data_if_needed(new_data_dir: &PathBuf) {
     #[cfg(test)]
-    if std::env::var_os("COCKPIT_TOOLS_DATA_DIR").is_some() {
+    if std::env::var_os("AIMODEL_SWITCH_DATA_DIR").is_some() {
         // Test guards use an explicit data root; never migrate the user's legacy files.
         return;
     }

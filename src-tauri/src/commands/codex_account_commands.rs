@@ -120,7 +120,7 @@ fn now_unix_seconds() -> i64 {
 fn get_codex_batch_delete_jobs_dir() -> PathBuf {
     let data_dir = account::get_data_dir()
         .or_else(|_| account::resolve_data_dir())
-        .unwrap_or_else(|_| PathBuf::from(".antigravity_cockpit"));
+        .unwrap_or_else(|_| PathBuf::from(".aimodel_switch"));
     data_dir.join(CODEX_BATCH_DELETE_JOBS_DIR)
 }
 

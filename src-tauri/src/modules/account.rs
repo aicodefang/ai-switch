@@ -27,9 +27,9 @@ const QUOTA_ALERT_COOLDOWN_SECONDS: i64 = 300;
 const LIST_ACCOUNTS_CACHE_TTL_MS: u64 = 800;
 
 // 使用与 AntigravityCockpit 插件相同的数据目录
-const DATA_DIR: &str = ".antigravity_cockpit";
-const DEV_DATA_DIR: &str = ".antigravity_cockpit_dev";
-const DATA_DIR_ENV: &str = "COCKPIT_TOOLS_DATA_DIR";
+const DATA_DIR: &str = ".aimodel_switch";
+const DEV_DATA_DIR: &str = ".aimodel_switch_dev";
+const DATA_DIR_ENV: &str = "AIMODEL_SWITCH_DATA_DIR";
 const PROFILE_ENV: &str = "COCKPIT_TOOLS_PROFILE";
 
 const ACCOUNTS_INDEX: &str = "accounts.json";
@@ -221,7 +221,7 @@ pub fn get_data_dir() -> Result<PathBuf, String> {
     for key in [
         "COCKPIT_TOOLS_TEST_DATA_DIR",
         "COCKPIT_TEST_DATA_DIR",
-        "COCKPIT_TOOLS_DATA_DIR",
+        "AIMODEL_SWITCH_DATA_DIR",
     ] {
         if let Ok(override_dir) = std::env::var(key) {
             let override_dir = override_dir.trim();

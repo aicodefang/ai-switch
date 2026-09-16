@@ -771,9 +771,9 @@ mod tests {
             let data_dir = root.join("data");
             std::fs::create_dir_all(&data_dir).expect("create test data dir");
             let previous_test_data_dir = std::env::var_os("COCKPIT_TOOLS_TEST_DATA_DIR");
-            let previous_data_dir = std::env::var_os("COCKPIT_TOOLS_DATA_DIR");
+            let previous_data_dir = std::env::var_os("AIMODEL_SWITCH_DATA_DIR");
             std::env::set_var("COCKPIT_TOOLS_TEST_DATA_DIR", &data_dir);
-            std::env::set_var("COCKPIT_TOOLS_DATA_DIR", &data_dir);
+            std::env::set_var("AIMODEL_SWITCH_DATA_DIR", &data_dir);
             Self {
                 root,
                 previous_test_data_dir,
@@ -789,8 +789,8 @@ mod tests {
                 None => std::env::remove_var("COCKPIT_TOOLS_TEST_DATA_DIR"),
             }
             match self.previous_data_dir.as_ref() {
-                Some(value) => std::env::set_var("COCKPIT_TOOLS_DATA_DIR", value),
-                None => std::env::remove_var("COCKPIT_TOOLS_DATA_DIR"),
+                Some(value) => std::env::set_var("AIMODEL_SWITCH_DATA_DIR", value),
+                None => std::env::remove_var("AIMODEL_SWITCH_DATA_DIR"),
             }
             let _ = std::fs::remove_dir_all(&self.root);
         }

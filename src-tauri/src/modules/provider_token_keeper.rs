@@ -146,6 +146,7 @@ fn now_ts_ms() -> i64 {
 }
 
 fn allow_platform_scan(platform: &'static str) -> bool {
+    if platform != "codex" && platform != "claude" { return false; }
     let now = now_ts();
     let Ok(state) = NEXT_PLATFORM_SCAN_AT.lock() else {
         return true;

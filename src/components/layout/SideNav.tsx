@@ -80,8 +80,7 @@ const PAGE_PLATFORM_MAP: Partial<Record<Page, PlatformId>> = {
   workbuddy: 'workbuddy',
 };
 
-const APP_DISPLAY_NAME =
-  import.meta.env.VITE_COCKPIT_TOOLS_PROFILE === 'dev' ? 'Cockpit Tools Dev' : 'Cockpit Tools';
+const APP_DISPLAY_NAME = 'AIModel Switch';
 
 const CLASSIC_NAV_MIN_SCALE = 0.5;
 const CLASSIC_NAV_SCALE_EPSILON = 0.004;
@@ -940,6 +939,7 @@ export function SideNav({
         ref={navItemsRef}
       >
         <button
+          hidden
           className={`nav-item ${page === 'dashboard' && !shouldLockActiveOnMore ? 'active' : ''}`}
           onClick={() => setPage('dashboard')}
           title={t('nav.dashboard')}

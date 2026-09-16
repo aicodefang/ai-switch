@@ -387,6 +387,7 @@ pub fn run() {
             });
 
             // 当前主线不再使用 platform-packages；启动时回收旧版本遗留的孤儿 adapter。
+            if std::env::var("AIMODEL_SWITCH_ALLOW_LEGACY_MIGRATIONS").as_deref() == Ok("1") {
             std::thread::spawn(|| {
                 match modules::process::close_orphaned_legacy_platform_adapter_processes(5) {
                     Ok(0) => {}
@@ -401,7 +402,10 @@ pub fn run() {
                 }
             });
 
+            }
             // 一次性迁移：历史版本可能被自动开启的「模型管理」统一关闭，之后由用户自己决定。
+            // Never migrate the user's running Codex installation implicitly in this fork.
+            if std::env::var("AIMODEL_SWITCH_ALLOW_LEGACY_MIGRATIONS").as_deref() == Ok("1") {
             std::thread::spawn(|| {
                 let migrated =
                     modules::codex_account::migrate_model_management_default_off_for_all_profiles();
@@ -413,6 +417,7 @@ pub fn run() {
                 }
             });
 
+            }
             // 初始化 Updater 插件
             #[cfg(desktop)]
             {
@@ -470,6 +475,7 @@ pub fn run() {
             // 会话一次性迁移：清理历史库与会话日志里第三方（DeepSeek 等）留下的 reasoning
             // content / 假 encrypted_content。每个 profile 目录只做一次，后台执行，不阻塞启动；
             // 新的脏数据已由网关响应出口拦截。
+            if std::env::var("AIMODEL_SWITCH_ALLOW_LEGACY_MIGRATIONS").as_deref() == Ok("1") {
             std::thread::spawn(|| {
                 match modules::codex_session_history_sanitize::run_one_time_reasoning_history_sanitize()
                 {
@@ -498,6 +504,7 @@ pub fn run() {
                 }
             });
 
+            }
             commands::codex_instance::start_mixed_model_gateway_watchdog(app.handle().clone());
 
             {
@@ -521,10 +528,6 @@ pub fn run() {
                 let app_handle = app.handle().clone();
                 tauri::async_runtime::spawn(async move {
                     modules::codex_oauth::restore_pending_oauth_listener(app_handle);
-                    modules::windsurf_oauth::restore_pending_oauth_listener();
-                    modules::kiro_oauth::restore_pending_oauth_listener();
-                    modules::trae_oauth::restore_pending_oauth_listener();
-                    modules::zed_oauth::restore_pending_oauth_listener();
                 });
             }
 
@@ -536,8 +539,6 @@ pub fn run() {
             {
                 let app_handle = app.handle().clone();
                 std::thread::spawn(move || {
-                    modules::wakeup_scheduler::restore_state_from_disk();
-                    modules::wakeup_scheduler::ensure_started(app_handle.clone());
                     modules::codex_wakeup_scheduler::ensure_started(app_handle.clone());
                     modules::codex_wakeup_scheduler::trigger_startup_tasks_if_needed(app_handle);
                 });
@@ -665,7 +666,7 @@ pub fn run() {
             }
 
             apply_startup_minimized(&app.handle());
-            modules::workbuddy_auto_checkin::start_auto_checkin_scheduler(app.handle().clone());
+            // This edition only runs Codex and Claude background services.
 
             Ok(())
         })

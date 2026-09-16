@@ -257,6 +257,8 @@ fn save_cache(payload: &RemoteConfigPayload) -> Result<(), String> {
 }
 
 async fn fetch_remote_config() -> Result<RemoteConfigPayload, String> {
+    // Fork policy: no upstream remote control. Retain the built-in OAuth app version.
+    if !cfg!(test) { return serde_json::from_str("{}").map_err(|e| e.to_string()); }
     logger::log_info("[RemoteConfig] 从远端拉取配置");
 
     let client = reqwest::Client::builder()

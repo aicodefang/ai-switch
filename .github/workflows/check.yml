@@ -1,0 +1,23 @@
+name: Checks
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  desktop:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27'
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - run: cargo check -p cockpit-tools --locked
+        env:
+          AIMODEL_DIRECT_SWIFT: '1'

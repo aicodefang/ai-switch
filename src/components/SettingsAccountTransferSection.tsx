@@ -59,6 +59,7 @@ import {
   selectionToAutoBackupMode,
 } from '../services/scheduledBackupService';
 import { ALL_PLATFORM_IDS, PlatformId } from '../types/platform';
+import { isFocusedPlatform } from '../productScope';
 import { getPlatformLabel } from '../utils/platformMeta';
 import { presentWindowsOperationError } from '../utils/windowsOperationDialog';
 
@@ -1187,7 +1188,7 @@ export function SettingsAccountTransferSection({
         present.add(item.platform);
       }
     }
-    return ALL_PLATFORM_IDS.filter((platform) => present.has(platform));
+    return ALL_PLATFORM_IDS.filter((platform) => isFocusedPlatform(platform) && present.has(platform));
   }, [backupFiles]);
   const visibleBackupFiles = useMemo(() => {
     if (backupPlatformFilter === 'all') {

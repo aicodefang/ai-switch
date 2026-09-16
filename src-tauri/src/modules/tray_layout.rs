@@ -27,25 +27,9 @@ pub const PLATFORM_TRAE_CN: &str = "trae_cn";
 pub const PLATFORM_TRAE_SOLO_CN: &str = "trae_solo_cn";
 pub const PLATFORM_WORKBUDDY: &str = "workbuddy";
 
-pub const SUPPORTED_PLATFORM_IDS: [&str; 18] = [
+pub const SUPPORTED_PLATFORM_IDS: [&str; 2] = [
     PLATFORM_CLAUDE_MANAGER,
     PLATFORM_CODEX,
-    PLATFORM_ANTIGRAVITY,
-    PLATFORM_ZED,
-    PLATFORM_GITHUB_COPILOT,
-    PLATFORM_WINDSURF,
-    PLATFORM_KIRO,
-    PLATFORM_CURSOR,
-    PLATFORM_GROK,
-    PLATFORM_CODEBUDDY,
-    PLATFORM_CODEBUDDY_CN,
-    PLATFORM_QODER,
-    PLATFORM_ZCODE,
-    PLATFORM_TRAE,
-    PLATFORM_TRAE_SOLO,
-    PLATFORM_TRAE_CN,
-    PLATFORM_TRAE_SOLO_CN,
-    PLATFORM_WORKBUDDY,
 ];
 
 pub const SORT_MODE_AUTO: &str = "auto";
@@ -170,6 +154,7 @@ fn sanitize_platform_ids(ids: &[String]) -> Vec<String> {
         let Some(normalized) = normalize_platform_id(id) else {
             continue;
         };
+        if !SUPPORTED_PLATFORM_IDS.contains(&normalized) { continue; }
         if result.iter().any(|existing| existing == normalized) {
             continue;
         }

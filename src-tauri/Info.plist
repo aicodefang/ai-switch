@@ -3,9 +3,9 @@
 <plist version="1.0">
 <dict>
   <key>CFBundleDisplayName</key>
-  <string>Cockpit Tools</string>
+  <string>AIModel Switch</string>
   <key>CFBundleName</key>
-  <string>Cockpit Tools</string>
+  <string>AIModel Switch</string>
   <key>LSRequiresCarbon</key>
   <false/>
 </dict>

@@ -764,7 +764,7 @@
             lookup_codex_model_provider_base_url_in_dir(&data_dir, Some("relay"), None).as_deref(),
             Some("https://relay.example/v1")
         );
-        // Avoid mutating process-global COCKPIT_TOOLS_DATA_DIR (races other tests).
+        // Avoid mutating process-global AIMODEL_SWITCH_DATA_DIR (races other tests).
         let resolved = resolve_sidecar_upstream_base_url_with(&account, &collection, |id, name| {
             lookup_codex_model_provider_base_url_in_dir(&data_dir, id, name)
         });

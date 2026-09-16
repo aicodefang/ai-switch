@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { UPSTREAM_REMOTE_SERVICES_ENABLED } from '../productScope';
 import type { SponsorModuleState } from '../types/sponsor';
 import {
   forceRefreshSponsorModuleState,
@@ -23,6 +24,10 @@ export const useSponsorStore = create<SponsorStoreState>((set) => ({
   initialized: false,
 
   fetchState: async (force = false) => {
+    if (!UPSTREAM_REMOTE_SERVICES_ENABLED) {
+      set({state: EMPTY_STATE, initialized: true, loading: false});
+      return EMPTY_STATE;
+    }
     set({ loading: true });
     try {
       const nextState = force

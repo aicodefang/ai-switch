@@ -5,7 +5,7 @@ fn webkit_data_root() -> Option<PathBuf> {
     #[cfg(target_os = "macos")]
     {
         let home = dirs::home_dir()?;
-        Some(home.join("Library/WebKit/com.jlcodes.cockpit-tools/WebsiteData"))
+        Some(home.join("Library/WebKit/io.aicodefang.aimodel-switch/WebsiteData"))
     }
     #[cfg(not(target_os = "macos"))]
     {

@@ -628,7 +628,7 @@ impl Default for TrayIconStyle {
 }
 
 fn default_ws_enabled() -> bool {
-    true
+    false
 }
 fn default_ws_port() -> u16 {
     DEFAULT_WS_PORT
@@ -652,7 +652,7 @@ fn default_global_proxy_no_proxy() -> String {
     "127.0.0.1,localhost,::1".to_string()
 }
 fn default_diagnostics_error_reporting_enabled() -> bool {
-    true
+    false
 }
 fn default_diagnostics_error_reporting_debug() -> bool {
     false
@@ -664,7 +664,7 @@ fn default_default_terminal() -> String {
     "system".to_string()
 }
 fn default_theme() -> String {
-    "system".to_string()
+    "light".to_string()
 }
 fn default_theme_color() -> String {
     "default".to_string()
@@ -714,7 +714,7 @@ fn default_codex_sync_wsl() -> bool {
     false
 }
 fn default_codex_app_ui_injection_enabled() -> bool {
-    true
+    false
 }
 
 fn default_codex_wsl_config_dir() -> String {
@@ -1487,7 +1487,7 @@ pub fn get_data_dir() -> Result<PathBuf, String> {
 /// 与 get_data_dir 相同，但不返回 Result
 pub fn get_shared_dir() -> PathBuf {
     crate::modules::account::resolve_data_dir()
-        .unwrap_or_else(|_| PathBuf::from(".antigravity_cockpit"))
+        .unwrap_or_else(|_| PathBuf::from(".aimodel_switch"))
 }
 
 /// 获取服务状态文件路径

@@ -779,6 +779,7 @@ export function useAutoRefresh() {
 
           const tasks: AutoRefreshSchedulerTask[] = [];
           for (const descriptor of descriptors) {
+            if (descriptor.key !== 'codex' && descriptor.key !== 'claude') continue;
             if (descriptor.intervalMinutes > 0) {
               console.log(`[AutoRefresh] ${descriptor.label} 已启用: 每 ${descriptor.intervalMinutes} 分钟`);
               tasks.push({

@@ -24,6 +24,7 @@ import { CodexSwitchProgressModal } from './components/CodexSwitchProgressModal'
 import { CodexInstanceLaunchProgressModal } from './components/CodexInstanceLaunchProgressModal';
 import { CodexPelicanHost } from './components/codex/pelican/CodexPelicanHost';
 import { AnnouncementHost } from './components/AnnouncementCenter';
+import { isFocusedPage, UPSTREAM_REMOTE_SERVICES_ENABLED } from './productScope';
 import { TopCenterPromoBanner } from './components/TopCenterPromoBanner';
 import type { QuickSettingsType } from './components/QuickSettingsPopover';
 import { isMainWindowNavigablePage, type Page } from './types/navigation';
@@ -230,7 +231,7 @@ const RENDERABLE_PAGE_VALUES: readonly Page[] = [
   'manual',
   'settings',
 ];
-const RENDERABLE_PAGE_SET = new Set<string>(RENDERABLE_PAGE_VALUES);
+const RENDERABLE_PAGE_SET = new Set<string>(RENDERABLE_PAGE_VALUES.filter(isFocusedPage));
 
 const TOP_PROMO_DEFAULT_EXCLUDED_PAGES: readonly Page[] = ['api-relay', 'settings'];
 const TOP_PROMO_PAGE_PLATFORM_TARGETS: Partial<Record<Page, readonly string[]>> = {
@@ -750,7 +751,7 @@ function MainApp() {
   const sideNavClassicFirstSyncDone = useSideNavLayoutStore((state) => state.classicFirstSyncDone);
   const markSideNavClassicFirstSyncDone = useSideNavLayoutStore((state) => state.markClassicFirstSyncDone);
   const syncSidebarEntriesFromDashboard = usePlatformLayoutStore((state) => state.syncSidebarEntriesFromDashboard);
-  const [page, setPage] = useState<Page>(() => {
+  const [page, setPageState] = useState<Page>(() => {
     try {
       const saved = normalizeStoredActivePage(localStorage.getItem(ACTIVE_PAGE_STORAGE_KEY));
       if (saved) {
@@ -758,8 +759,9 @@ function MainApp() {
       }
       localStorage.removeItem(ACTIVE_PAGE_STORAGE_KEY);
     } catch {}
-    return 'dashboard';
+    return 'codex';
   });
+  const setPage = useCallback((next: Page) => setPageState(isFocusedPage(next) ? next : 'codex'), []);
   const isCodexSuitePage = page === 'codex' || page === 'codex-api-service';
   const [codexSuiteKeepAlive, setCodexSuiteKeepAlive] = useState(isCodexSuitePage);
   const shouldMountCodexSuite = isCodexSuitePage || codexSuiteKeepAlive;
@@ -1511,6 +1513,7 @@ function MainApp() {
   }, [updateRuntimeInfo]);
 
   const runUpdaterCheck = useCallback(async () => {
+    if (!UPSTREAM_REMOTE_SERVICES_ENABLED) return null;
     const { check } = await import('@tauri-apps/plugin-updater');
     const target = getUpdaterCheckTarget();
     return target ? check({ target }) : check();
@@ -3958,7 +3961,7 @@ function MainApp() {
         onOpenLogViewer={() => setShowLogViewer(true)}
       />
 
-      <AnnouncementHost onNavigate={setPage} />
+      {UPSTREAM_REMOTE_SERVICES_ENABLED && <AnnouncementHost onNavigate={setPage} />}
 
       {sideNavLayoutMode !== 'classic' && (
         <button

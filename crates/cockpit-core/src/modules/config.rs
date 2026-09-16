@@ -23,9 +23,9 @@ const USER_CONFIG_FILE: &str = "config.json";
 const USER_CONFIG_LOCK_FILE: &str = "config.json.lock";
 
 /// 数据目录名
-const DATA_DIR: &str = ".antigravity_cockpit";
-const DEV_DATA_DIR: &str = ".antigravity_cockpit_dev";
-const DATA_DIR_ENV: &str = "COCKPIT_TOOLS_DATA_DIR";
+const DATA_DIR: &str = ".aimodel_switch";
+const DEV_DATA_DIR: &str = ".aimodel_switch_dev";
+const DATA_DIR_ENV: &str = "AIMODEL_SWITCH_DATA_DIR";
 const PROFILE_ENV: &str = "COCKPIT_TOOLS_PROFILE";
 
 /// 服务状态（写入共享文件供其他客户端读取）

@@ -1,12 +1,12 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Cockpit Tools Dev",
-  "identifier": "com.jlcodes.cockpit-tools.dev",
+  "productName": "AIModel Switch Dev",
+  "identifier": "io.aicodefang.aimodel-switch.dev",
   "app": {
     "windows": [
       {
         "label": "main",
-        "title": "Cockpit Tools Dev",
+        "title": "AIModel Switch Dev",
         "width": 1280,
         "height": 800,
         "minWidth": 900,
@@ -19,7 +19,7 @@
       },
       {
         "label": "floating-card",
-        "title": "Cockpit Tools Dev",
+        "title": "AIModel Switch Dev",
         "create": false,
         "width": 250,
         "height": 290,

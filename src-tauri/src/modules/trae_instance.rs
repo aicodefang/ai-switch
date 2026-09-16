@@ -139,7 +139,7 @@ pub fn get_default_instances_root_dir_for_platform(
     {
         let home = dirs::home_dir().ok_or("无法获取用户主目录")?;
         return Ok(home
-            .join(".antigravity_cockpit")
+            .join(".aimodel_switch")
             .join("instances")
             .join(platform.provider_key()));
     }
@@ -149,7 +149,7 @@ pub fn get_default_instances_root_dir_for_platform(
         let appdata =
             std::env::var("APPDATA").map_err(|_| "无法获取 APPDATA 环境变量".to_string())?;
         return Ok(PathBuf::from(appdata)
-            .join(".antigravity_cockpit")
+            .join(".aimodel_switch")
             .join("instances")
             .join(platform.provider_key()));
     }
@@ -158,7 +158,7 @@ pub fn get_default_instances_root_dir_for_platform(
     {
         let home = dirs::home_dir().ok_or("无法获取用户主目录")?;
         return Ok(home
-            .join(".antigravity_cockpit")
+            .join(".aimodel_switch")
             .join("instances")
             .join(platform.provider_key()));
     }

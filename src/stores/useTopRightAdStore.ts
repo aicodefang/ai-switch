@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { UPSTREAM_REMOTE_SERVICES_ENABLED } from '../productScope';
 import type { TopRightAdState } from '../types/topRightAd';
 import { forceRefreshTopRightAdState, getTopRightAdState } from '../services/topRightAdService';
 
@@ -64,7 +65,7 @@ function persistTopRightAdState(state: TopRightAdState): void {
   }
 }
 
-const initialTopRightAdState = loadCachedTopRightAdState();
+const initialTopRightAdState = UPSTREAM_REMOTE_SERVICES_ENABLED ? loadCachedTopRightAdState() : EMPTY_STATE;
 
 export const useTopRightAdStore = create<TopRightAdStoreState>((set, get) => ({
   state: initialTopRightAdState,
@@ -72,6 +73,7 @@ export const useTopRightAdStore = create<TopRightAdStoreState>((set, get) => ({
   initialized: initialTopRightAdState.ads.length > 0,
 
   fetchState: async () => {
+    if (!UPSTREAM_REMOTE_SERVICES_ENABLED) return EMPTY_STATE;
     set({ loading: true });
     try {
       const nextState = normalizeTopRightAdState(await getTopRightAdState());
@@ -87,6 +89,7 @@ export const useTopRightAdStore = create<TopRightAdStoreState>((set, get) => ({
   },
 
   forceRefreshState: async () => {
+    if (!UPSTREAM_REMOTE_SERVICES_ENABLED) return EMPTY_STATE;
     set({ loading: true });
     try {
       const nextState = normalizeTopRightAdState(await forceRefreshTopRightAdState());

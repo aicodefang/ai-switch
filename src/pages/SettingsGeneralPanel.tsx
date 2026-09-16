@@ -1,3 +1,4 @@
+import { isFocusedPlatform } from '../productScope';
 import { invoke } from '@tauri-apps/api/core';
 import { normalizeLanguage } from '../i18n';
 import * as accountService from '../services/accountService';
@@ -1021,33 +1022,12 @@ export function SettingsGeneralPanel(props: SettingsPageViewProps) {
                     <option value="last">
                       {t('settings.general.startupPageLast', '记住上次')}
                     </option>
-                    <option value="dashboard">{t('nav.dashboard', '仪表盘')}</option>
-                    <option value="overview">{t('nav.overview', 'Antigravity IDE')}</option>
                     <option value="codex">{t('nav.codex', 'Codex')}</option>
                     <option value="codex-api-service">
                       {t('settings.general.startupPageCodexApi', 'Codex API 服务')}
                     </option>
                     <option value="claude">{t('nav.claude', 'Claude')}</option>
-                    <option value="github-copilot">{t('nav.githubCopilot', 'GitHub Copilot')}</option>
-                    <option value="windsurf">{t('nav.windsurf', 'Devin')}</option>
-                    <option value="kiro">Kiro</option>
-                    <option value="cursor">Cursor</option>
-                    <option value="grok">Grok CLI</option>
-                    <option value="codebuddy">{t('nav.codebuddy', 'CodeBuddy')}</option>
-                    <option value="codebuddy-cn">{t('nav.codebuddyCn', 'CodeBuddy CN')}</option>
-                    <option value="qoder">{t('nav.qoder', 'Qoder')}</option>
-                    <option value="zcode">ZCode</option>
-                    <option value="trae">{t('nav.trae', 'Trae')}</option>
-                    <option value="trae-solo">{t('nav.traeSolo', 'TRAE SOLO')}</option>
-                    <option value="trae-cn">{t('nav.traeCn', 'Trae CN')}</option>
-                    <option value="trae-solo-cn">{t('nav.traeSoloCn', 'TRAE SOLO CN')}</option>
-                    <option value="workbuddy">WorkBuddy</option>
-                    <option value="zed">{t('nav.zed', 'Zed')}</option>
-                    <option value="instances">{t('nav.instances', '应用多开')}</option>
-                    <option value="wakeup">{t('nav.wakeup', '唤醒任务')}</option>
                     <option value="2fa">{t('nav.2faManager', '2FA 管理')}</option>
-                    <option value="api-relay">{t('nav.apiRelay', '中转站')}</option>
-                    <option value="manual">{t('nav.manual', '使用手册')}</option>
                     <option value="settings">{t('nav.settings', '设置')}</option>
                   </select>
                 </div>
@@ -1144,7 +1124,7 @@ export function SettingsGeneralPanel(props: SettingsPageViewProps) {
               </div>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <div style={{ order: platformSettingsOrder.antigravity }}>
+              {isFocusedPlatform('antigravity') && (<div style={{ order: platformSettingsOrder.antigravity }}>
                 <div className="group-title">{t('settings.general.antigravitySettingsTitle', 'Antigravity IDE 设置')}</div>
                 <div className="settings-group">
               <div className="settings-row">
@@ -1597,11 +1577,11 @@ export function SettingsGeneralPanel(props: SettingsPageViewProps) {
               )}
             </div>
 
-              </div>
+              </div>)}
 
               <SettingsCodexPlatformPanel {...props} />
 
-              <div style={{ order: platformSettingsOrder.claude_manager }}>
+              {isFocusedPlatform('claude_manager') && (<div style={{ order: platformSettingsOrder.claude_manager }}>
                 <div className="group-title">
                   {t('settings.general.claudeSettingsTitle', 'Claude 设置')}
                 </div>
@@ -1744,9 +1724,9 @@ export function SettingsGeneralPanel(props: SettingsPageViewProps) {
                     isPreset: claudeQuotaAlertThresholdIsPreset,
                   })}
                 </div>
-              </div>
+              </div>)}
 
-              <div style={{ order: platformSettingsOrder['github-copilot'] }}>
+              {isFocusedPlatform('github-copilot') && (<div style={{ order: platformSettingsOrder['github-copilot'] }}>
                 <div className="group-title">{t('settings.general.githubCopilotSettingsTitle', 'GitHub Copilot 设置')}</div>
                 <div className="settings-group">
               <div className="settings-row">
@@ -1932,9 +1912,9 @@ export function SettingsGeneralPanel(props: SettingsPageViewProps) {
               )}
             </div>
 
-              </div>
+              </div>)}
 
-              <div style={{ order: platformSettingsOrder.windsurf }}>
+              {isFocusedPlatform('windsurf') && (<div style={{ order: platformSettingsOrder.windsurf }}>
                 <div className="group-title">{t('settings.general.windsurfSettingsTitle', 'Windsurf 设置')}</div>
                 <div className="settings-group">
               <div className="settings-row">
@@ -2120,9 +2100,9 @@ export function SettingsGeneralPanel(props: SettingsPageViewProps) {
               )}
             </div>
 
-              </div>
+              </div>)}
 
-              <div style={{ order: platformSettingsOrder.kiro }}>
+              {isFocusedPlatform('kiro') && (<div style={{ order: platformSettingsOrder.kiro }}>
                 <div className="group-title">{t('settings.general.kiroSettingsTitle', 'Kiro 设置')}</div>
                 <div className="settings-group">
               <div className="settings-row">
@@ -2307,9 +2287,9 @@ export function SettingsGeneralPanel(props: SettingsPageViewProps) {
                 </div>
               )}
             </div>
-              </div>
+              </div>)}
 
-              <div style={{ order: platformSettingsOrder.codebuddy }}>
+              {isFocusedPlatform('codebuddy') && (<div style={{ order: platformSettingsOrder.codebuddy }}>
                 <div className="group-title">{t('settings.general.codebuddySettingsTitle', 'CodeBuddy 设置')}</div>
                 <div className="settings-group">
               <div className="settings-row">
@@ -2519,9 +2499,9 @@ export function SettingsGeneralPanel(props: SettingsPageViewProps) {
                 </div>
               )}
             </div>
-              </div>
+              </div>)}
 
-              <div style={{ order: platformSettingsOrder.codebuddy_cn }}>
+              {isFocusedPlatform('codebuddy_cn') && (<div style={{ order: platformSettingsOrder.codebuddy_cn }}>
                 <div className="group-title">{t('settings.general.codebuddyCnSettingsTitle', 'CodeBuddy CN 设置')}</div>
                 <div className="settings-group">
                   <div className="settings-row">
@@ -2716,9 +2696,9 @@ export function SettingsGeneralPanel(props: SettingsPageViewProps) {
                     </div>
                   )}
                 </div>
-              </div>
+              </div>)}
 
-              <div style={{ order: platformSettingsOrder.qoder }}>
+              {isFocusedPlatform('qoder') && (<div style={{ order: platformSettingsOrder.qoder }}>
                 <div className="group-title">{t('quickSettings.qoder.title', 'Qoder 设置')}</div>
                 <div className="settings-group">
                   <div className="settings-row">
@@ -2907,9 +2887,9 @@ export function SettingsGeneralPanel(props: SettingsPageViewProps) {
                     </div>
                   )}
                 </div>
-              </div>
+              </div>)}
 
-              <div style={{ order: platformSettingsOrder.zcode }}>
+              {isFocusedPlatform('zcode') && (<div style={{ order: platformSettingsOrder.zcode }}>
                 <div className="group-title">{t('quickSettings.zcode.title', 'ZCode 设置')}</div>
                 <div className="settings-group">
                   <div className="settings-row">
@@ -3025,9 +3005,9 @@ export function SettingsGeneralPanel(props: SettingsPageViewProps) {
                     </div>
                   </div>
                 </div>
-              </div>
+              </div>)}
 
-              <div style={{ order: platformSettingsOrder.trae }}>
+              {isFocusedPlatform('trae') && (<div style={{ order: platformSettingsOrder.trae }}>
                 <div className="group-title">{t('quickSettings.trae.title', 'Trae 设置')}</div>
                 <div className="settings-group">
                   <div className="settings-row">
@@ -3238,7 +3218,7 @@ export function SettingsGeneralPanel(props: SettingsPageViewProps) {
                     </div>
                   )}
                 </div>
-              </div>
+              </div>)}
 
               {renderTraeVariantSettingsGroup({
                 target: 'trae_solo',
@@ -3303,7 +3283,7 @@ export function SettingsGeneralPanel(props: SettingsPageViewProps) {
                 quotaAlertThresholdIsPreset: traeSoloCnQuotaAlertThresholdIsPreset,
               })}
 
-              <div style={{ order: platformSettingsOrder.workbuddy }}>
+              {isFocusedPlatform('workbuddy') && (<div style={{ order: platformSettingsOrder.workbuddy }}>
                 <div className="group-title">{t('quickSettings.workbuddy.title', 'WorkBuddy 设置')}</div>
                 <div className="settings-group">
                   <div className="settings-row">
@@ -3515,9 +3495,9 @@ export function SettingsGeneralPanel(props: SettingsPageViewProps) {
                     </div>
                   )}
                 </div>
-              </div>
+              </div>)}
 
-              <div style={{ order: platformSettingsOrder.zed }}>
+              {isFocusedPlatform('zed') && (<div style={{ order: platformSettingsOrder.zed }}>
                 <div className="group-title">{t('quickSettings.zed.title', 'Zed 设置')}</div>
                 <div className="settings-group">
                   <div className="settings-row">
@@ -3702,9 +3682,9 @@ export function SettingsGeneralPanel(props: SettingsPageViewProps) {
                     </div>
                   )}
                 </div>
-              </div>
+              </div>)}
 
-              <div style={{ order: platformSettingsOrder.cursor }}>
+              {isFocusedPlatform('cursor') && (<div style={{ order: platformSettingsOrder.cursor }}>
                 <div className="group-title">{t('quickSettings.cursor.title', 'Cursor 设置')}</div>
                 <div className="settings-group">
               <div className="settings-row">
@@ -3889,8 +3869,8 @@ export function SettingsGeneralPanel(props: SettingsPageViewProps) {
                 </div>
               )}
             </div>
-              </div>
-<div style={{ order: platformSettingsOrder.grok }}>
+              </div>)}
+{isFocusedPlatform('grok') && (<div style={{ order: platformSettingsOrder.grok }}>
                 <div className="group-title">{t('quickSettings.grok.title', 'Grok CLI 设置')}</div>
                 <div className="settings-group">
                   <div className="settings-row">
@@ -4084,7 +4064,7 @@ export function SettingsGeneralPanel(props: SettingsPageViewProps) {
                     </div>
                   )}
                 </div>
-              </div>
+              </div>)}
             </div>
 
           </fieldset>
