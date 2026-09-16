@@ -26,6 +26,10 @@ A tag that already points at another commit is rejected. Published releases are 
 
 The existing Windows package workflow remains a separate main-branch smoke build; it does not publish Releases.
 
+### Retry publishing without rebuilding
+
+If all six builds passed but publishing failed, push a `publish-<original-tag>` tag on a commit containing `.github/workflows/recover-release.yml` (for example, `publish-v0.2.2-rc.1`). This starts `Recover desktop release`, which finds the original release run, requires all six build jobs and the preparation job to have succeeded, and downloads its existing Actions artifacts. It validates their source commit, regenerates checksums and publishes the original release. It does not rebuild packages, move the original tag, or overwrite a published release. The original artifacts must still be within their 14-day retention period.
+
 ## macOS signing
 
 Configure these repository Actions Secrets:

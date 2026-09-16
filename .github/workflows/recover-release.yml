@@ -1,0 +1,89 @@
+name: Recover desktop release
+
+on:
+  push:
+    tags: ['publish-v*']
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: recover-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Find and verify the original six-platform build
+        id: source
+        shell: bash
+        run: |
+          tag="${GITHUB_REF_NAME#publish-}"
+          [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]
+          git fetch --no-tags origin "refs/tags/$tag"
+          sha=$(git rev-parse 'FETCH_HEAD^{commit}')
+          gh api "repos/$GH_REPO/actions/runs?branch=$tag&event=push&per_page=100" > "$RUNNER_TEMP/runs.json"
+          run_id=$(node -e '
+            const runs = require(process.argv[1]).workflow_runs;
+            const run = runs.find(r => r.path === ".github/workflows/release.yml" && r.head_sha === process.argv[2]);
+            if (!run) throw new Error("No release build found for the original tag commit");
+            console.log(run.id);
+          ' "$RUNNER_TEMP/runs.json" "$sha")
+          gh api "repos/$GH_REPO/actions/runs/$run_id/jobs?per_page=100" > "$RUNNER_TEMP/jobs.json"
+          node -e '
+            const jobs = require(process.argv[1]).jobs;
+            for (const name of ["prepare", ...["macos", "windows", "linux"].flatMap(p => ["aarch64", "x64"].map(a => `Build ${p} ${a}`))]) {
+              if (!jobs.some(j => j.name === name && j.conclusion === "success")) throw new Error(`Build not successful: ${name}`);
+            }
+          ' "$RUNNER_TEMP/jobs.json"
+          printf 'tag=%s\nsha=%s\nrun_id=%s\n' "$tag" "$sha" "$run_id" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ steps.source.outputs.run_id }}
+          pattern: release-*
+          path: release-assets
+          merge-multiple: true
+      - name: Verify packages and regenerate checksums
+        working-directory: release-assets
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const files = fs.readdirSync('.');
+          for (const suffix of ['.dmg', '.app.tar.gz', '-setup.exe', '.deb', '.rpm', '.AppImage']) {
+            if (files.filter(name => name.endsWith(suffix)).length !== 2) throw new Error(`Missing architecture for ${suffix}`);
+          }
+          for (const platform of ['macos', 'windows', 'linux']) {
+            for (const arch of ['aarch64', 'x64']) {
+              const info = fs.readFileSync(`BUILD-${platform}-${arch}.txt`, 'utf8');
+              if (!info.includes(`Commit: ${process.env.SOURCE_SHA}\n`)) throw new Error('Artifact commit mismatch');
+            }
+          }
+          NODE
+          sha256sum -- * > SHA256SUMS.txt
+      - name: Publish original release without rebuilding or moving its tag
+        env:
+          RELEASE_TAG: ${{ steps.source.outputs.tag }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        shell: bash
+        run: |
+          git fetch --no-tags origin "refs/tags/$RELEASE_TAG"
+          test "$(git rev-parse 'FETCH_HEAD^{commit}')" = "$SOURCE_SHA"
+          if gh release view "$RELEASE_TAG" --json isDraft > "$RUNNER_TEMP/release.json" 2>/dev/null; then
+            node -e "if (!require(process.argv[1]).isDraft) throw new Error('Release already published')" "$RUNNER_TEMP/release.json"
+          else
+            gh release create "$RELEASE_TAG" --verify-tag --draft --title "ai-switch $RELEASE_TAG" --generate-notes
+          fi
+          gh release upload "$RELEASE_TAG" release-assets/* --clobber
+          prerelease=false
+          if [[ "$RELEASE_TAG" == *-* ]]; then prerelease=true; fi
+          gh release edit "$RELEASE_TAG" --draft=false --prerelease="$prerelease"
