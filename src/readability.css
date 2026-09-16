@@ -1,0 +1,76 @@
+/* Readable light theme: body text >= 14px; secondary text >= 12px.
+   Text palette is intentionally independent from decorative accent colors. */
+:root { color: #17212f; background: #f5f7fa; font-size: 15px; }
+.sidebar { background: #fff; border-color: #cbd5e1; }
+.brand-icon, .primary, .card-actions .mini-primary { background: #1d4ed8; border-color: #1d4ed8; color: #fff; }
+.brand strong { font-size: 16px; }
+.brand small, .nav-label, .sidebar-footer, .subtle, .topbar,
+.page-heading p, .overview-main p, .footnote, .empty p,
+.card-top small, .endpoint, .protocol, footer,
+.panel p, .panel li, .backup-row p, .backup-row small,
+label small, .optional, .provider-help, .form-note,
+.modal p, .modal .footnote, .modal li, .eyebrow,
+.local-note, .local-note strong, .nav span, .icon-button {
+  color: #475569;
+}
+.brand small, .nav-label, .sidebar-footer, .subtle, .eyebrow,
+.local-note p, .local-pill, .badge, .footnote,
+.card-top small, .protocol, .test-inline, footer,
+.backup-row p, .backup-row small, .path,
+label small, .optional, .provider-help a {
+  font-size: 12px !important;
+}
+.nav { color: #334155; font-size: 15px; }
+.nav:hover { background: #f1f5f9; }
+.nav.active { background: #e8efff; color: #1e40af; }
+.nav.active span { color: #1e40af; }
+.topbar { background: #fff; border-color: #dbe1e9; font-size: 13px; }
+.page-heading p, .overview-main p, .empty p, .panel p, .panel li,
+.provider-help, .form-note, .modal p, .modal li { font-size: 14px; }
+.overview { background: #eef4ff; border-color: #b6c9ec; }
+.overview-icon, .empty-icon { background: #e2ecff; color: #1e40af; }
+.overview-main h2 { font-size: 18px; color: #17212f; }
+.badge { background: #e2e8f0; color: #334155; }
+.badge.green { background: #dcfce7; color: #166534; }
+.section-heading h2 { font-size: 17px; }
+.section-heading h2 span { background: #e2e8f0; color: #334155; font-size: 12px; }
+.search { color: #475569; }
+.search input { font-size: 14px; width: 235px; }
+.empty, .panel, .profile-card, .provider-tile, .backup-row { border-color: #cbd5e1; }
+.empty h3, .card-top h3, .backup-row h3 { font-size: 16px; }
+.profile-card.selected { border-color: #2563eb; box-shadow: 0 0 0 1px #2563eb; }
+.provider-tile { font-size: 14px; }
+.provider-tile:hover { background: #eff6ff; border-color: #93b4ed; }
+.provider-tile > svg { color: #475569; }
+.provider-mark { color: #334155; background: #e9eef5; }
+.model-name { font-size: 16px; }
+.endpoint { font-size: 13px; }
+.protocol span { background: #f1f5f9; color: #334155; }
+.card-actions button { font-size: 13px; color: #334155; }
+.primary, .secondary { font-size: 14px; min-height: 42px; }
+.primary:hover:not(:disabled) { background: #1e40af; }
+.secondary { background: #fff; border-color: #b8c4d4; color: #253347; }
+.secondary:hover:not(:disabled) { background: #eff6ff; }
+.drawer { width: 640px; background: #fff; }
+.drawer-header, .drawer-footer { border-color: #d7dee8; }
+label { color: #253347; font-size: 14px; }
+label input, label select, textarea {
+  color: #17212f; border-color: #aebccc; font-size: 15px;
+  line-height: 1.55; min-height: 44px; background: #fff;
+}
+input::placeholder, textarea::placeholder { color: #596579; opacity: 1; }
+input:focus, select:focus, textarea:focus {
+  border-color: #2563eb; box-shadow: 0 0 0 3px #dbeafe;
+}
+.provider-help { background: #f1f5f9; }
+a { color: #1d4ed8; }
+.callout { background: #f1f5f9; color: #334155; border-color: #cbd5e1; }
+.notice { font-size: 14px; }
+.notice.error { color: #9a3412; background: #fff7ed; border-color: #fdba74; }
+.notice.success { color: #166534; background: #f0fdf4; border-color: #86c99d; }
+.preview-banner { font-size: 13px; color: #713f12; background: #fefce8; border-color: #d9bd6c; }
+.ok { color: #166534; }
+.bad { color: #9a3412; }
+.backup-icon { color: #1d4ed8; }
+button:focus-visible, a:focus-visible { outline-color: #2563eb; }
+@media (max-width: 1050px) { .overview-main p { font-size: 14px; } }
