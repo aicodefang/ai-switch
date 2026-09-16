@@ -1,0 +1,11 @@
+{
+  "version": "2026-07-10.1",
+  "codexOAuthAppVersion": "26.820.60940",
+  "refreshIntervalMs": 3600000,
+  "updatePrompt": {
+    "mode": "popup",
+    "targetVersions": ">=1.1.4",
+    "targetOs": ["windows", "macos", "linux"]
+  },
+  "rules": []
+}

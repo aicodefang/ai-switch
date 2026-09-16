@@ -1,38 +1,117 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "AIModel Switch",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "identifier": "io.aicodefang.aimodel-switch",
   "build": {
-    "beforeDevCommand": "npm run dev",
+    "beforeDevCommand": "node scripts/prepare-tauri.cjs && npm run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "npm run build",
+    "beforeBuildCommand": "node scripts/prepare-tauri.cjs && npm run build",
     "frontendDist": "../dist"
   },
   "app": {
+    "macOSPrivateApi": true,
     "windows": [
       {
         "label": "main",
         "title": "AIModel Switch",
-        "width": 1180,
-        "height": 820,
-        "minWidth": 850,
-        "minHeight": 640
+        "width": 1280,
+        "height": 800,
+        "minWidth": 900,
+        "minHeight": 600,
+        "center": true,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "transparent": false,
+        "resizable": true
+      },
+      {
+        "label": "floating-card",
+        "title": "AIModel Switch",
+        "create": false,
+        "width": 250,
+        "height": 290,
+        "minWidth": 250,
+        "minHeight": 290,
+        "decorations": false,
+        "transparent": true,
+        "shadow": false,
+        "resizable": false,
+        "skipTaskbar": true,
+        "alwaysOnTop": false,
+        "visible": false
       }
     ],
     "security": {
-      "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost; img-src 'self' asset: http://asset.localhost data:; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; frame-src 'none'"
+      "csp": null
     }
   },
   "bundle": {
     "active": true,
     "targets": "all",
+    "createUpdaterArtifacts": false,
+    "externalBin": [
+      "../sidecars/cockpit-cliproxy/bin/cockpit-cliproxy"
+    ],
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "installerHooks": "./windows/nsis/installer-hooks.nsh"
+      }
+    },
+    "linux": {
+      "deb": {
+        "depends": [
+          "libsecret-tools"
+        ]
+      }
+    },
     "icon": [
+      "icons/48x48.png",
       "icons/32x32.png",
+      "icons/16x16.png",
+      "icons/64x64.png",
       "icons/128x128.png",
-      "icons/128x128@2x.png",
+      "icons/256x256.png",
+      "icons/512x512.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "resources": {
+      "../scripts/claude-desktop-auth-helper.cjs": "scripts/claude-desktop-auth-helper.cjs",
+      "../src/assets/icons/antigravity-menu.png": "native-menu-icons/antigravity-menu.png",
+      "../src/assets/icons/claude.png": "native-menu-icons/claude.png",
+      "../src/assets/icons/codebuddy.png": "native-menu-icons/codebuddy.png",
+      "../src/assets/icons/codex.svg": "native-menu-icons/codex.svg",
+      "../src/assets/icons/cursor-menu.png": "native-menu-icons/cursor-menu.png",
+      "../src/assets/icons/github-copilot.svg": "native-menu-icons/github-copilot.svg",
+      "../src/assets/icons/kiro-menu.png": "native-menu-icons/kiro-menu.png",
+      "../src/assets/icons/qoder.png": "native-menu-icons/qoder.png",
+      "../src/assets/icons/trae.png": "native-menu-icons/trae.png",
+      "../src/assets/icons/trae-cn.png": "native-menu-icons/trae-cn.png",
+      "../src/assets/icons/trae-solo.png": "native-menu-icons/trae-solo.png",
+      "../src/assets/icons/trae-solo-cn.png": "native-menu-icons/trae-solo-cn.png",
+      "../src/assets/icons/windsurf.svg": "native-menu-icons/windsurf.svg",
+      "../src/assets/icons/workbuddy.png": "native-menu-icons/workbuddy.png",
+      "../src/assets/icons/zed.png": "native-menu-icons/zed.png",
+      "../src/assets/icons/zcode.png": "native-menu-icons/zcode.png"
+    },
+    "macOS": {
+      "bundleName": "AIModel Switch",
+      "infoPlist": "Info.plist"
+    }
+  },
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": [
+          "aimodel-switch"
+        ]
+      }
+    },
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEMxRkU1RTdBRDdCRUUzM0QKUldROTQ3N1hlbDcrd1ZVQ2E3b1ZoVUdXL3BWQmpjdzNnWllNUW1LNHVwcE9wdGI1Q1UxQmdnQ0oK",
+      "endpoints": []
+    }
   }
 }

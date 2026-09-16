@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-AIModel Switch is an early desktop application. Please include its exact version and operating system in a report. This repository does not promise a supported-version matrix or inherit security support from upstream Cockpit Tools.
+This repository does not currently publish a supported-version matrix for security fixes. Please include the exact Cockpit Tools version and operating system in a report. If the issue also affects other releases, include the versions you have confirmed rather than assuming an upgrade fixes it.
 
 ## Reporting a vulnerability
 

@@ -1,0 +1,996 @@
+import {
+  ChevronDown,
+  GripVertical,
+  Plus,
+  RotateCcw,
+  Star,
+  Trash2,
+  X,
+} from "lucide-react";
+import {
+  type MouseEvent as ReactMouseEvent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { useTranslation } from "react-i18next";
+import type {
+  CodexExperimentalModelDefinition,
+  CodexReasoningEffort,
+} from "../../types/codex";
+import {
+  insertModelsBySource,
+  moveModel,
+} from "../../utils/codexExperimentalModelOrder";
+import "./CodexExperimentalModelEditor.css";
+
+export interface CodexExperimentalModelSource {
+  label: string;
+  kind: "subscription" | "api" | "missing";
+  managed?: boolean;
+}
+
+export interface CodexAvailableChannel {
+  id: string;
+  namespace: string;
+  providerName: string;
+  models: string[];
+}
+
+interface CodexExperimentalModelEditorProps {
+  models: CodexExperimentalModelDefinition[];
+  defaultModelId?: string | null;
+  resetModels?: CodexExperimentalModelDefinition[];
+  resetDefaultModelId?: string | null;
+  disabled?: boolean;
+  mode?: "inline" | "summary";
+  availableChannels?: CodexAvailableChannel[];
+  resolveModelSource?: (modelId: string) => CodexExperimentalModelSource;
+  onChange: (models: CodexExperimentalModelDefinition[]) => void;
+  onDefaultModelChange?: (modelId: string | null) => void;
+  onValidationChange?: (error: string | null) => void;
+  onModelRemoved?: (removedModelId: string) => void;
+  onModelAdded?: (addedModelId: string) => void;
+}
+
+const MODEL_ID_PATTERN = /^[A-Za-z0-9._:/-]+$/;
+const REASONING_EFFORT_OPTIONS: CodexReasoningEffort[] = [
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+  "ultra",
+];
+export function validateCodexExperimentalModels(
+  models: CodexExperimentalModelDefinition[],
+  translate: (key: string, fallback: string) => string,
+): string | null {
+  if (models.length === 0) {
+    return translate(
+      "codex.experimentalModelCatalog.models.validation.required",
+      "至少保留一个模型。",
+    );
+  }
+  const seen = new Set<string>();
+  for (const model of models) {
+    const modelId = model.model_id.trim();
+    if (!modelId || modelId.length > 128 || !MODEL_ID_PATTERN.test(modelId)) {
+      return translate(
+        "codex.experimentalModelCatalog.models.validation.modelId",
+        "模型 ID 只能包含字母、数字、点、横线、下划线、斜杠和冒号。",
+      );
+    }
+    if (!model.display_name.trim() || model.display_name.trim().length > 100) {
+      return translate(
+        "codex.experimentalModelCatalog.models.validation.displayName",
+        "请输入不超过 100 个字符的展示名。",
+      );
+    }
+    const key = modelId.toLowerCase();
+    if (seen.has(key)) {
+      return translate(
+        "codex.experimentalModelCatalog.models.validation.duplicate",
+        "模型 ID 不能重复。",
+      );
+    }
+    seen.add(key);
+  }
+  return null;
+}
+
+function nextModelDefinition(
+  models: CodexExperimentalModelDefinition[],
+): CodexExperimentalModelDefinition {
+  const existing = new Set(
+    models.map((model) => model.model_id.trim().toLowerCase()),
+  );
+  let suffix = 1;
+  while (existing.has(`custom-model${suffix}`)) suffix += 1;
+  return {
+    model_id: `custom-model${suffix}`,
+    display_name: `Custom Model ${suffix}`,
+  };
+}
+
+export function CodexExperimentalModelEditor({
+  models,
+  defaultModelId = null,
+  resetModels = [],
+  resetDefaultModelId = null,
+  disabled = false,
+  mode = "summary",
+  availableChannels,
+  resolveModelSource,
+  onChange,
+  onDefaultModelChange,
+  onValidationChange,
+  onModelRemoved,
+  onModelAdded,
+}: CodexExperimentalModelEditorProps) {
+  const { t } = useTranslation();
+  const [managerOpen, setManagerOpen] = useState(false);
+  const [openReasoningIndex, setOpenReasoningIndex] = useState<number | null>(
+    null,
+  );
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [draggingModelId, setDraggingModelId] = useState<string | null>(null);
+  const [channelSearchQuery, setChannelSearchQuery] = useState("");
+  const addMenuRef = useRef<HTMLDivElement | null>(null);
+  const reasoningPickerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!addMenuOpen) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (addMenuRef.current && !addMenuRef.current.contains(target)) {
+        setAddMenuOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [addMenuOpen]);
+
+  useEffect(() => {
+    if (openReasoningIndex === null) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (!reasoningPickerRef.current?.contains(target)) {
+        setOpenReasoningIndex(null);
+      }
+    };
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [openReasoningIndex]);
+
+  useEffect(() => {
+    if (draggingModelId === null) return;
+    const handleMouseUp = () => setDraggingModelId(null);
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => window.removeEventListener("mouseup", handleMouseUp);
+  }, [draggingModelId]);
+
+  const existingModelIds = useMemo(
+    () => new Set(models.map((m) => m.model_id.trim().toLowerCase())),
+    [models],
+  );
+
+  const resetAvailable = resetModels.length > 0;
+  const isResetState = useMemo(
+    () =>
+      resetAvailable &&
+      JSON.stringify(models) === JSON.stringify(resetModels) &&
+      (defaultModelId ?? null) === (resetDefaultModelId ?? null),
+    [defaultModelId, models, resetAvailable, resetDefaultModelId, resetModels],
+  );
+
+  const handleResetModels = () => {
+    if (disabled || !resetAvailable || isResetState) return;
+    const currentIds = new Set(
+      models.map((model) => model.model_id.trim().toLowerCase()),
+    );
+    const resetIds = new Set(
+      resetModels.map((model) => model.model_id.trim().toLowerCase()),
+    );
+    models.forEach((model) => {
+      if (!resetIds.has(model.model_id.trim().toLowerCase())) {
+        onModelRemoved?.(model.model_id);
+      }
+    });
+    resetModels.forEach((model) => {
+      if (!currentIds.has(model.model_id.trim().toLowerCase())) {
+        onModelAdded?.(model.model_id);
+      }
+    });
+    onChange(
+      resetModels.map((model) => ({
+        ...model,
+        reasoning_efforts: model.reasoning_efforts
+          ? [...model.reasoning_efforts]
+          : undefined,
+      })),
+    );
+    onDefaultModelChange?.(resetDefaultModelId);
+    setAddMenuOpen(false);
+    setOpenReasoningIndex(null);
+  };
+
+  const handleReorderDragStart = (
+    event: ReactMouseEvent,
+    modelId: string,
+  ) => {
+    if (disabled || event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setDraggingModelId(modelId);
+  };
+
+  const handleReorderDragMove = (targetIndex: number) => {
+    if (disabled || draggingModelId === null) return;
+    const from = models.findIndex((item) => item.model_id === draggingModelId);
+    if (from < 0 || from === targetIndex) return;
+    onChange(moveModel(models, from, targetIndex));
+  };
+
+  const handleAddBlankModel = () => {
+    const newModel = nextModelDefinition(models);
+    onChange(
+      insertModelsBySource(models, [newModel], resolveModelSource),
+    );
+    onModelAdded?.(newModel.model_id);
+    setAddMenuOpen(false);
+  };
+
+  const handleToggleChannelModel = (namespace: string, upstreamModel: string) => {
+    const modelId = `${namespace}/${upstreamModel.trim()}`;
+    const isAdded = existingModelIds.has(modelId.toLowerCase());
+
+    if (isAdded) {
+      if (models.length <= 1) return;
+      onChange(
+        models.filter(
+          (m) => m.model_id.trim().toLowerCase() !== modelId.toLowerCase(),
+        ),
+      );
+      if (defaultModelId === modelId) {
+        onDefaultModelChange?.(null);
+      }
+      onModelRemoved?.(modelId);
+    } else {
+      const displayName = `${namespace} / ${upstreamModel.trim()}`;
+      onChange(
+        insertModelsBySource(
+          models,
+          [{ model_id: modelId, display_name: displayName }],
+          resolveModelSource,
+        ),
+      );
+      onModelAdded?.(modelId);
+    }
+  };
+
+  const handleAddAllChannelModels = (namespace: string, channelModels: string[]) => {
+    const toAdd: CodexExperimentalModelDefinition[] = [];
+    const seen = new Set(existingModelIds);
+    for (const upstreamModel of channelModels) {
+      const modelId = `${namespace}/${upstreamModel.trim()}`;
+      if (seen.has(modelId.toLowerCase())) continue;
+      seen.add(modelId.toLowerCase());
+      toAdd.push({
+        model_id: modelId,
+        display_name: `${namespace} / ${upstreamModel.trim()}`,
+      });
+      onModelAdded?.(modelId);
+    }
+    if (toAdd.length > 0) {
+      onChange(insertModelsBySource(models, toAdd, resolveModelSource));
+    }
+  };
+
+  const handleRemoveAllChannelModels = (namespace: string, channelModels: string[]) => {
+    const targetIds = new Set(
+      channelModels.map((m) => `${namespace}/${m.trim()}`.toLowerCase()),
+    );
+    const remaining = models.filter(
+      (m) => !targetIds.has(m.model_id.trim().toLowerCase()),
+    );
+    if (remaining.length === 0) return;
+
+    for (const upstream of channelModels) {
+      const fullId = `${namespace}/${upstream.trim()}`;
+      if (existingModelIds.has(fullId.toLowerCase())) {
+        onModelRemoved?.(fullId);
+      }
+    }
+    onChange(remaining);
+  };
+
+  const rowErrors = useMemo(() => {
+    const counts = new Map<string, number>();
+    models.forEach((model) => {
+      const key = model.model_id.trim().toLowerCase();
+      if (key) counts.set(key, (counts.get(key) ?? 0) + 1);
+    });
+    return models.map((model) => {
+      const modelId = model.model_id.trim();
+      return {
+        modelId:
+          !modelId || modelId.length > 128 || !MODEL_ID_PATTERN.test(modelId)
+            ? t(
+                "codex.experimentalModelCatalog.models.validation.modelId",
+                "模型 ID 只能包含字母、数字、点、横线、下划线、斜杠和冒号。",
+              )
+            : counts.get(modelId.toLowerCase())! > 1
+              ? t(
+                  "codex.experimentalModelCatalog.models.validation.duplicate",
+                  "模型 ID 不能重复。",
+                )
+              : null,
+        displayName:
+          !model.display_name.trim() || model.display_name.trim().length > 100
+            ? t(
+                "codex.experimentalModelCatalog.models.validation.displayName",
+                "请输入不超过 100 个字符的展示名。",
+              )
+            : null,
+      };
+    });
+  }, [models, t]);
+
+  const validationError = validateCodexExperimentalModels(
+    models,
+    (key, fallback) => t(key, fallback),
+  );
+  useEffect(() => {
+    onValidationChange?.(validationError);
+  }, [onValidationChange, validationError]);
+
+  useEffect(() => {
+    if (!managerOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      setManagerOpen(false);
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [managerOpen]);
+
+  const updateModel = (
+    index: number,
+    field: keyof CodexExperimentalModelDefinition,
+    value: string,
+  ) => {
+    const previous = models[index];
+    onChange(
+      models.map((model, modelIndex) =>
+        modelIndex === index ? { ...model, [field]: value } : model,
+      ),
+    );
+    if (field === "model_id" && defaultModelId === previous?.model_id) {
+      onDefaultModelChange?.(value.trim() || null);
+    }
+  };
+
+  const reasoningLabel = (effort: CodexReasoningEffort) =>
+    t(`codex.wakeup.reasoningEfforts.${effort}`, effort.toUpperCase());
+
+  const updateReasoningEfforts = (
+    index: number,
+    effort: CodexReasoningEffort | "official",
+  ) => {
+    onChange(
+      models.map((model, modelIndex) => {
+        if (modelIndex !== index) return model;
+        if (effort === "official") {
+          return { ...model, reasoning_efforts: undefined };
+        }
+        const current = model.reasoning_efforts ?? [];
+        if (current.includes(effort)) {
+          if (current.length === 1) return model;
+          return {
+            ...model,
+            reasoning_efforts: current.filter((item) => item !== effort),
+          };
+        }
+        return { ...model, reasoning_efforts: [...current, effort] };
+      }),
+    );
+    if (effort === "official") setOpenReasoningIndex(null);
+  };
+
+  const showModelSource = Boolean(resolveModelSource);
+
+  const editorContent = (
+    <div className="codex-experimental-model-editor">
+      <div className="codex-experimental-model-editor__header">
+        <span>
+          {t("codex.experimentalModelCatalog.models.title", "模型列表")}
+        </span>
+        <div className="codex-experimental-model-editor__header-actions">
+          {resetAvailable && (
+            <button
+              type="button"
+              className="codex-experimental-model-editor__reset-btn"
+              onClick={handleResetModels}
+              disabled={disabled || isResetState}
+              title={t(
+                "codex.experimentalModelCatalog.models.resetDefaults",
+                "恢复默认",
+              )}
+            >
+              <RotateCcw size={14} />
+              <span>
+                {t(
+                  "codex.experimentalModelCatalog.models.resetDefaults",
+                  "恢复默认",
+                )}
+              </span>
+            </button>
+          )}
+          <div className="codex-experimental-model-editor__add-wrap" ref={addMenuRef}>
+          <button
+            type="button"
+            className="codex-experimental-model-editor__add-btn"
+            onClick={() => {
+              if (availableChannels && availableChannels.length > 0) {
+                setAddMenuOpen((prev) => !prev);
+              } else {
+                handleAddBlankModel();
+              }
+            }}
+            disabled={disabled}
+            title={t("codex.experimentalModelCatalog.models.add", "添加模型")}
+            aria-expanded={addMenuOpen}
+          >
+            <Plus size={14} />
+            <span>{t("codex.experimentalModelCatalog.models.add", "添加模型")}</span>
+            {availableChannels && availableChannels.length > 0 && (
+              <ChevronDown size={13} className={addMenuOpen ? "is-open" : undefined} />
+            )}
+          </button>
+
+          {addMenuOpen && (
+            <div className="codex-experimental-model-editor__add-menu">
+              <div className="codex-experimental-model-editor__add-menu-search">
+                <input
+                  type="text"
+                  placeholder={t("common.search", "搜索渠道或模型...")}
+                  value={channelSearchQuery}
+                  onChange={(e) => setChannelSearchQuery(e.target.value)}
+                  autoFocus
+                />
+              </div>
+
+              <div className="codex-experimental-model-editor__add-menu-list">
+                <button
+                  type="button"
+                  className="codex-experimental-model-editor__add-menu-item is-blank"
+                  onClick={handleAddBlankModel}
+                >
+                  <Plus size={14} />
+                  <span>{t("codex.experimentalModelCatalog.models.addCustomBlank", "新建自定义空白模型")}</span>
+                </button>
+
+                {availableChannels?.map((channel) => {
+                  const query = channelSearchQuery.trim().toLowerCase();
+                  const filtered = query
+                    ? channel.models.filter(
+                        (m) =>
+                          m.toLowerCase().includes(query) ||
+                          channel.namespace.toLowerCase().includes(query) ||
+                          channel.providerName.toLowerCase().includes(query),
+                      )
+                    : channel.models;
+
+                  if (filtered.length === 0 && query) return null;
+
+                  const unaddedModels = channel.models.filter(
+                    (m) => !existingModelIds.has(`${channel.namespace}/${m}`.toLowerCase()),
+                  );
+                  const allAdded = unaddedModels.length === 0;
+
+                  return (
+                    <div className="codex-experimental-model-editor__channel-group" key={channel.id}>
+                      <div className="codex-experimental-model-editor__channel-head">
+                        <span className="codex-experimental-model-editor__channel-title">
+                          <span className="codex-experimental-model-editor__channel-ns">{channel.namespace}/</span>
+                          <span className="codex-experimental-model-editor__channel-name">{channel.providerName}</span>
+                        </span>
+                        {allAdded ? (
+                          <button
+                            type="button"
+                            className="codex-experimental-model-editor__channel-add-all is-remove"
+                            onClick={() => handleRemoveAllChannelModels(channel.namespace, channel.models)}
+                          >
+                            {t("common.clearAll", "全部取消")}
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            className="codex-experimental-model-editor__channel-add-all"
+                            onClick={() => handleAddAllChannelModels(channel.namespace, unaddedModels)}
+                          >
+                            {t("codex.experimentalModelCatalog.models.addAll", "+ 全部 ({{count}})", {
+                              count: unaddedModels.length,
+                            })}
+                          </button>
+                        )}
+                      </div>
+
+                      {filtered.map((upstreamModel) => {
+                        const fullId = `${channel.namespace}/${upstreamModel}`;
+                        const isAdded = existingModelIds.has(fullId.toLowerCase());
+                        return (
+                          <button
+                            type="button"
+                            key={fullId}
+                            className={`codex-experimental-model-editor__add-menu-item${
+                              isAdded ? " is-added" : ""
+                            }`}
+                            onClick={() => handleToggleChannelModel(channel.namespace, upstreamModel)}
+                            title={isAdded ? t("common.clickToRemove", "点击取消选择") : t("common.clickToAdd", "点击添加模型")}
+                          >
+                            <span className="codex-experimental-model-editor__menu-item-left">
+                              <span className="codex-experimental-model-editor__menu-checkbox">
+                                {isAdded ? "✓" : ""}
+                              </span>
+                              <span className="codex-experimental-model-editor__menu-model-id">{fullId}</span>
+                            </span>
+                            <span className="codex-experimental-model-editor__menu-status">
+                              {isAdded ? t("common.added", "已添加") : t("common.add", "+ 添加")}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+          </div>
+        </div>
+      </div>
+
+      <div
+        className={`codex-experimental-model-editor__table-head${
+          showModelSource ? " has-source" : ""
+        }`}
+        aria-hidden="true"
+      >
+        <span className="codex-experimental-model-editor__drag-head" />
+        <span>
+          {t("codex.experimentalModelCatalog.models.modelId", "模型 ID")}
+        </span>
+        <span>
+          {t("codex.experimentalModelCatalog.models.displayName", "展示名")}
+        </span>
+        {showModelSource && (
+          <span>{t("codex.experimentalModelCatalog.models.source", "来源")}</span>
+        )}
+        <span>
+          {t("codex.experimentalModelCatalog.models.reasoning", "推理强度")}
+        </span>
+        <span>
+          {t("codex.experimentalModelCatalog.models.operation", "操作")}
+        </span>
+      </div>
+
+      <div
+        className={`codex-experimental-model-editor__list${
+          openReasoningIndex !== null ? " has-open-menu" : ""
+        }${draggingModelId ? " is-sorting" : ""}`}
+      >
+        {models.map((model, index) => {
+          const source = resolveModelSource?.(model.model_id);
+          return (
+          <div
+            className={`codex-experimental-model-editor__row${
+              draggingModelId === model.model_id ? " is-dragging" : ""
+            }`}
+            key={`${index}:${model.model_id}`}
+            onMouseEnter={() => handleReorderDragMove(index)}
+          >
+            <div
+              className={`codex-experimental-model-editor__fields${
+                showModelSource ? " has-source" : ""
+              }`}
+            >
+              <button
+                type="button"
+                className="codex-experimental-model-editor__drag-handle"
+                disabled={disabled}
+                onMouseDown={(event) =>
+                  handleReorderDragStart(event, model.model_id)
+                }
+                title={t(
+                  "platformLayout.dragHandleLabel",
+                  "拖动排序",
+                )}
+                aria-label={t(
+                  "platformLayout.dragHandleLabel",
+                  "拖动排序",
+                )}
+              >
+                <GripVertical size={12} strokeWidth={1.75} />
+              </button>
+              <label>
+                <span>
+                  {t(
+                    "codex.experimentalModelCatalog.models.modelId",
+                    "模型 ID",
+                  )}
+                </span>
+                <input
+                  type="text"
+                  value={model.model_id}
+                  onChange={(event) =>
+                    updateModel(index, "model_id", event.target.value)
+                  }
+                  disabled={disabled || Boolean(source?.managed)}
+                  className={rowErrors[index]?.modelId ? "has-error" : ""}
+                  placeholder="custom-model"
+                />
+                {rowErrors[index]?.modelId && (
+                  <small className="codex-experimental-model-editor__error">
+                    {rowErrors[index].modelId}
+                  </small>
+                )}
+              </label>
+              <label>
+                <span>
+                  {t(
+                    "codex.experimentalModelCatalog.models.displayName",
+                    "展示名",
+                  )}
+                </span>
+                <input
+                  type="text"
+                  value={model.display_name}
+                  onChange={(event) =>
+                    updateModel(index, "display_name", event.target.value)
+                  }
+                  disabled={disabled}
+                  className={rowErrors[index]?.displayName ? "has-error" : ""}
+                  placeholder="Custom Model"
+                />
+                {rowErrors[index]?.displayName && (
+                  <small className="codex-experimental-model-editor__error">
+                    {rowErrors[index].displayName}
+                  </small>
+                )}
+              </label>
+              {showModelSource && (
+                <div className="codex-experimental-model-editor__source">
+                  <span className="codex-experimental-model-editor__field-label">
+                    {t("codex.experimentalModelCatalog.models.source", "来源")}
+                  </span>
+                  {source ? (
+                    <span
+                      className="codex-experimental-model-editor__source-badge"
+                      data-kind={source.kind}
+                      title={source.label}
+                    >
+                      {source.label}
+                    </span>
+                  ) : (
+                    <span className="codex-experimental-model-editor__source-badge" data-kind="subscription">
+                      {t("instances.form.modelRouting.subscriptionSource", "订阅")}
+                    </span>
+                  )}
+                </div>
+              )}
+              <div
+                className="codex-experimental-model-editor__reasoning"
+                ref={
+                  openReasoningIndex === index ? reasoningPickerRef : undefined
+                }
+              >
+                <span className="codex-experimental-model-editor__field-label">
+                  {t(
+                    "codex.experimentalModelCatalog.models.reasoning",
+                    "推理强度",
+                  )}
+                </span>
+                <div className="codex-experimental-model-editor__reasoning-picker">
+                  <button
+                    type="button"
+                    className="codex-experimental-model-editor__reasoning-trigger"
+                    onClick={() => {
+                      setOpenReasoningIndex((current) =>
+                        current === index ? null : index,
+                      );
+                    }}
+                    disabled={disabled}
+                    aria-expanded={openReasoningIndex === index}
+                    title={
+                      model.reasoning_efforts?.length
+                        ? model.reasoning_efforts.map(reasoningLabel).join("、")
+                        : t(
+                            "codex.experimentalModelCatalog.models.followOfficial",
+                            "跟随官方",
+                          )
+                    }
+                  >
+                    <span>
+                      {model.reasoning_efforts?.length
+                        ? model.reasoning_efforts.map(reasoningLabel).join("、")
+                        : t(
+                            "codex.experimentalModelCatalog.models.followOfficial",
+                            "跟随官方",
+                          )}
+                    </span>
+                    <ChevronDown size={14} />
+                  </button>
+                  {openReasoningIndex === index && (
+                    <div className="codex-experimental-model-editor__reasoning-menu">
+                      <button
+                        type="button"
+                        className={`codex-experimental-model-editor__reasoning-option${
+                          !model.reasoning_efforts?.length
+                            ? " is-selected"
+                            : " is-muted"
+                        }`}
+                        onClick={() =>
+                          updateReasoningEfforts(index, "official")
+                        }
+                      >
+                        <span
+                          className="codex-experimental-model-editor__check"
+                          aria-hidden="true"
+                        >
+                          {!model.reasoning_efforts?.length ? "✓" : ""}
+                        </span>
+                        {t(
+                          "codex.experimentalModelCatalog.models.followOfficial",
+                          "跟随官方",
+                        )}
+                      </button>
+                      {REASONING_EFFORT_OPTIONS.map((effort) => {
+                        const selected =
+                          model.reasoning_efforts?.includes(effort) ?? false;
+                        return (
+                          <button
+                            key={effort}
+                            type="button"
+                            className={`codex-experimental-model-editor__reasoning-option${
+                              selected
+                                ? " is-selected"
+                                : !model.reasoning_efforts?.length
+                                  ? " is-muted"
+                                  : ""
+                            }`}
+                            onClick={() =>
+                              updateReasoningEfforts(index, effort)
+                            }
+                          >
+                            <span
+                              className="codex-experimental-model-editor__check"
+                              aria-hidden="true"
+                            >
+                              {selected ? "✓" : ""}
+                            </span>
+                            {reasoningLabel(effort)}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="codex-experimental-model-editor__operation">
+                <span className="codex-experimental-model-editor__field-label">
+                  {t("codex.experimentalModelCatalog.models.operation", "操作")}
+                </span>
+                <div className="codex-experimental-model-editor__operation-actions">
+                  <button
+                    type="button"
+                    className="codex-experimental-model-editor__icon-btn"
+                    data-default={
+                      defaultModelId === model.model_id ? "true" : undefined
+                    }
+                    onClick={() => onDefaultModelChange?.(model.model_id)}
+                    disabled={disabled || !onDefaultModelChange}
+                    title={t(
+                      "codex.experimentalModelCatalog.models.setDefault",
+                      "设为默认模型",
+                    )}
+                    aria-label={t(
+                      "codex.experimentalModelCatalog.models.setDefault",
+                      "设为默认模型",
+                    )}
+                    aria-pressed={defaultModelId === model.model_id}
+                  >
+                    <Star
+                      size={14}
+                      fill={
+                        defaultModelId === model.model_id
+                          ? "currentColor"
+                          : "none"
+                      }
+                    />
+                  </button>
+                  <button
+                    type="button"
+                    className="codex-experimental-model-editor__icon-btn is-danger"
+                    onClick={() => {
+                      const targetModelId = model.model_id;
+                      onChange(
+                        models.filter((_, itemIndex) => itemIndex !== index),
+                      );
+                      if (defaultModelId === targetModelId)
+                        onDefaultModelChange?.(null);
+                      onModelRemoved?.(targetModelId);
+                    }}
+                    disabled={disabled || models.length === 1}
+                    title={t(
+                      "codex.experimentalModelCatalog.models.remove",
+                      "删除模型",
+                    )}
+                    aria-label={t(
+                      "codex.experimentalModelCatalog.models.remove",
+                      "删除模型",
+                    )}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          );
+        })}
+      </div>
+      <p className="codex-experimental-model-editor__hint">
+        {t(
+          "codex.experimentalModelCatalog.models.inheritHint",
+          "官方模型保留原有能力字段；自定义模型使用通用能力模板。可见模型可直接新增或删除。",
+        )}
+      </p>
+    </div>
+  );
+
+  if (mode === "summary") {
+    return (
+      <>
+        <div className="codex-experimental-model-summary">
+          <div className="codex-experimental-model-summary__header">
+            <span>
+              {t("codex.experimentalModelCatalog.models.title", "模型列表")}
+            </span>
+            <button
+              type="button"
+              className="codex-experimental-model-summary__manage"
+              onClick={() => setManagerOpen(true)}
+              disabled={disabled}
+            >
+              {t("codex.experimentalModelCatalog.models.manage", "管理")}
+            </button>
+          </div>
+          <div
+            className={`codex-experimental-model-summary__table-head${
+              showModelSource ? " has-source" : ""
+            }`}
+            aria-hidden="true"
+          >
+            <span className="codex-experimental-model-editor__drag-head" />
+            <span>
+              {t("codex.experimentalModelCatalog.models.modelId", "模型 ID")}
+            </span>
+            <span>
+              {t("codex.experimentalModelCatalog.models.displayName", "展示名")}
+            </span>
+            {showModelSource && (
+              <span>{t("codex.experimentalModelCatalog.models.source", "来源")}</span>
+            )}
+            <span>
+              {t("codex.experimentalModelCatalog.models.reasoning", "推理强度")}
+            </span>
+            <span>
+              {t("codex.experimentalModelCatalog.models.default", "默认")}
+            </span>
+          </div>
+          <div
+            className={`codex-experimental-model-summary__list${
+              draggingModelId ? " is-sorting" : ""
+            }`}
+          >
+            {models.map((model, index) => {
+              const source = resolveModelSource?.(model.model_id);
+              return (
+              <div
+                className={`codex-experimental-model-summary__row${
+                  showModelSource ? " has-source" : ""
+                }${
+                  draggingModelId === model.model_id ? " is-dragging" : ""
+                }`}
+                key={`${model.model_id}:${model.display_name}`}
+                onMouseEnter={() => handleReorderDragMove(index)}
+              >
+                <button
+                  type="button"
+                  className="codex-experimental-model-editor__drag-handle"
+                  disabled={disabled}
+                  onMouseDown={(event) =>
+                    handleReorderDragStart(event, model.model_id)
+                  }
+                  title={t(
+                    "platformLayout.dragHandleLabel",
+                    "拖动排序",
+                  )}
+                  aria-label={t(
+                    "platformLayout.dragHandleLabel",
+                    "拖动排序",
+                  )}
+                >
+                  <GripVertical size={12} strokeWidth={1.75} />
+                </button>
+                <code>{model.model_id}</code>
+                <span className="codex-experimental-model-summary__name">
+                  {model.display_name || model.model_id}
+                </span>
+                {showModelSource && (
+                  <span
+                    className="codex-experimental-model-summary__source"
+                    data-kind={source?.kind ?? "subscription"}
+                    title={source?.label ?? t("instances.form.modelRouting.subscriptionSource", "订阅")}
+                  >
+                    {source?.label ?? t("instances.form.modelRouting.subscriptionSource", "订阅")}
+                  </span>
+                )}
+                <span className="codex-experimental-model-summary__reasoning">
+                  {model.reasoning_efforts?.length
+                    ? model.reasoning_efforts.map(reasoningLabel).join("、")
+                    : t(
+                        "codex.experimentalModelCatalog.models.followOfficial",
+                        "跟随官方",
+                      )}
+                </span>
+                <span
+                  className={`codex-experimental-model-summary__default${
+                    defaultModelId === model.model_id ? " is-active" : ""
+                  }`}
+                >
+                  {defaultModelId === model.model_id
+                    ? t("codex.experimentalModelCatalog.models.default", "默认")
+                    : "—"}
+                </span>
+              </div>
+              );
+            })}
+          </div>
+        </div>
+        {managerOpen && (
+          <div className="codex-experimental-model-manager-overlay">
+            <div
+              className="codex-experimental-model-manager-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="codex-experimental-model-manager-title"
+            >
+              <div className="codex-experimental-model-manager-modal__header">
+                <h3 id="codex-experimental-model-manager-title">
+                  {t("codex.experimentalModelCatalog.models.title", "模型列表")}
+                </h3>
+                <button
+                  type="button"
+                  className="codex-experimental-model-manager-modal__close"
+                  onClick={() => setManagerOpen(false)}
+                  aria-label={t("common.close", "关闭")}
+                >
+                  <X size={16} />
+                </button>
+              </div>
+              {editorContent}
+            </div>
+          </div>
+        )}
+      </>
+    );
+  }
+
+  return editorContent;
+}
