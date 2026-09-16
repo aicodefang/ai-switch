@@ -2154,9 +2154,12 @@ fn parse_codex_store_version_from_dir_name(dir_name: &str) -> Option<Vec<u32>> {
 #[cfg(target_os = "windows")]
 fn codex_store_package_priority(dir_name: &str) -> u8 {
     let lower = dir_name.to_ascii_lowercase();
-    if lower.starts_with("openai.chatgpt_") || lower.starts_with("openai.chatgpt-desktop_") {
+    // Prefer the standalone Codex package when it is installed. ChatGPT remains a
+    // legacy fallback because it can also expose Codex, but launching ChatGPT and
+    // then probing for a Codex.exe process produces a false startup failure.
+    if lower.starts_with("openai.codex_") {
         2
-    } else if lower.starts_with("openai.codex_") {
+    } else if lower.starts_with("openai.chatgpt_") || lower.starts_with("openai.chatgpt-desktop_") {
         1
     } else {
         0
@@ -2165,7 +2168,7 @@ fn codex_store_package_priority(dir_name: &str) -> u8 {
 
 #[cfg(target_os = "windows")]
 fn find_codex_windows_app_main_exe(app_dir: &std::path::Path) -> Option<std::path::PathBuf> {
-    for exe_name in ["ChatGPT.exe", "Codex.exe"] {
+    for exe_name in ["Codex.exe", "ChatGPT.exe"] {
         let candidate = app_dir.join(exe_name);
         if candidate.exists() {
             return Some(candidate);
@@ -2242,10 +2245,10 @@ fn detect_codex_exec_path_by_windowsapps_scan() -> Option<std::path::PathBuf> {
 
 #[cfg(target_os = "windows")]
 fn detect_codex_exec_path_by_appx_install_location() -> Option<std::path::PathBuf> {
-    let script = r#"$names = @('OpenAI.ChatGPT', 'OpenAI.ChatGPT-Desktop', 'OpenAI.Codex')
+    let script = r#"$names = @('OpenAI.Codex', 'OpenAI.ChatGPT', 'OpenAI.ChatGPT-Desktop')
 $pkg = $names |
   ForEach-Object { Get-AppxPackage -Name $_ -ErrorAction SilentlyContinue } |
-  Sort-Object @{ Expression = { if ($_.Name -like 'OpenAI.ChatGPT*') { 0 } else { 1 } } }, @{ Expression = { $_.Version }; Descending = $true } |
+  Sort-Object @{ Expression = { if ($_.Name -like 'OpenAI.Codex*') { 0 } else { 1 } } }, @{ Expression = { $_.Version }; Descending = $true } |
   Select-Object -First 1
 if (-not $pkg) {
   $pkg = Get-AppxPackage |
@@ -2255,7 +2258,7 @@ if (-not $pkg) {
       $_.PackageFamilyName -like 'OpenAI.ChatGPT*' -or
       $_.PackageFamilyName -like 'OpenAI.Codex*'
     } |
-  Sort-Object @{ Expression = { if ($_.Name -like 'OpenAI.ChatGPT*' -or $_.PackageFamilyName -like 'OpenAI.ChatGPT*') { 0 } else { 1 } } }, @{ Expression = { $_.Version }; Descending = $true } |
+  Sort-Object @{ Expression = { if ($_.Name -like 'OpenAI.Codex*' -or $_.PackageFamilyName -like 'OpenAI.Codex*') { 0 } else { 1 } } }, @{ Expression = { $_.Version }; Descending = $true } |
   Select-Object -First 1
 }
 if ($pkg -and -not [string]::IsNullOrWhiteSpace($pkg.InstallLocation)) {
@@ -2295,12 +2298,12 @@ if ($pkg -and -not [string]::IsNullOrWhiteSpace($pkg.InstallLocation)) {
 fn detect_codex_store_app_user_model_id_by_startapps() -> Option<String> {
     let script = r#"$entry = Get-StartApps |
   Where-Object {
+    $_.AppID -like 'OpenAI.Codex*' -or
     $_.AppID -like 'OpenAI.ChatGPT*' -or
-    $_.AppID -like 'OpenAI.Codex_*' -or
-    $_.Name -like 'ChatGPT*' -or
-    $_.Name -like 'Codex*'
+    $_.Name -like 'Codex*' -or
+    $_.Name -like 'ChatGPT*'
   } |
-  Sort-Object @{ Expression = { if ($_.AppID -like 'OpenAI.ChatGPT*' -or $_.Name -like 'ChatGPT*') { 0 } else { 1 } } }, Name |
+  Sort-Object @{ Expression = { if ($_.AppID -like 'OpenAI.Codex*' -or $_.Name -like 'Codex*') { 0 } else { 1 } } }, Name |
   Select-Object -First 1
 if ($entry -and -not [string]::IsNullOrWhiteSpace($entry.AppID)) {
   Write-Output ([string]$entry.AppID.Trim())
@@ -2323,10 +2326,10 @@ if ($entry -and -not [string]::IsNullOrWhiteSpace($entry.AppID)) {
 
 #[cfg(target_os = "windows")]
 fn detect_codex_store_app_user_model_id_by_appx_fallback() -> Option<String> {
-    let script = r#"$names = @('OpenAI.ChatGPT', 'OpenAI.ChatGPT-Desktop', 'OpenAI.Codex')
+    let script = r#"$names = @('OpenAI.Codex', 'OpenAI.ChatGPT', 'OpenAI.ChatGPT-Desktop')
 $pkg = $names |
   ForEach-Object { Get-AppxPackage -Name $_ -ErrorAction SilentlyContinue } |
-  Sort-Object @{ Expression = { if ($_.Name -like 'OpenAI.ChatGPT*') { 0 } else { 1 } } }, @{ Expression = { $_.Version }; Descending = $true } |
+  Sort-Object @{ Expression = { if ($_.Name -like 'OpenAI.Codex*') { 0 } else { 1 } } }, @{ Expression = { $_.Version }; Descending = $true } |
   Select-Object -First 1
 if (-not $pkg) {
   $pkg = Get-AppxPackage |
@@ -2336,7 +2339,7 @@ if (-not $pkg) {
       $_.PackageFamilyName -like 'OpenAI.ChatGPT*' -or
       $_.PackageFamilyName -like 'OpenAI.Codex*'
     } |
-  Sort-Object @{ Expression = { if ($_.Name -like 'OpenAI.ChatGPT*' -or $_.PackageFamilyName -like 'OpenAI.ChatGPT*') { 0 } else { 1 } } }, @{ Expression = { $_.Version }; Descending = $true } |
+  Sort-Object @{ Expression = { if ($_.Name -like 'OpenAI.Codex*' -or $_.PackageFamilyName -like 'OpenAI.Codex*') { 0 } else { 1 } } }, @{ Expression = { $_.Version }; Descending = $true } |
   Select-Object -First 1
 }
 if ($pkg -and -not [string]::IsNullOrWhiteSpace($pkg.PackageFamilyName)) {
