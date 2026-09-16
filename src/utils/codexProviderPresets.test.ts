@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  CODEX_VISIBLE_PROVIDER_PRESETS,
   DEEPSEEK_API_BASE_URL,
   MINIMAX_API_PROVIDER_ID,
   MINIMAX_EN_API_PROVIDER_ID,
@@ -12,6 +13,23 @@ import {
   findCodexApiProviderPresetById,
 } from "./codexProviderPresets.ts";
 import { resolveCodexProviderCapabilityProfile } from "./codexProviderGateway.ts";
+
+test("provider choices only expose OpenAI, Azure and tuantuan beside custom", () => {
+  assert.deepEqual(CODEX_VISIBLE_PROVIDER_PRESETS.map((preset) => preset.id), [
+    "openai_official", "azure_openai", "tuantuan",
+  ]);
+});
+
+test("tuantuan exposes both requested selectable endpoints", () => {
+  const preset = findCodexApiProviderPresetById("tuantuan");
+  assert.ok(preset);
+  assert.deepEqual(preset.baseUrls, [
+    "https://hk1.heliumlabz.com", "https://openai.heliumlabz.com",
+  ]);
+  for (const endpoint of preset.baseUrls) {
+    assert.equal(findCodexApiProviderPresetByBaseUrl(`${endpoint}/`)?.id, "tuantuan");
+  }
+});
 
 test("OpenRouter preset includes the current Luna Pro model id", () => {
   const preset = findCodexApiProviderPresetByBaseUrl(

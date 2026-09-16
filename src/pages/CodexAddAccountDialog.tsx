@@ -2,7 +2,7 @@ import { createPortal } from "react-dom";
 import { RefreshCw, Download, X, Globe, KeyRound, Database, Copy, Check, RotateCw, CircleAlert, Info, Star, Eye, EyeOff, FileUp, FileText, ExternalLink, FolderPlus, Terminal, ShieldCheck } from "lucide-react";
 import { MfaQuickCodeSelect } from "../components/MfaQuickCodeSelect";
 import { SingleSelectDropdown } from "../components/SingleSelectDropdown";
-import { CODEX_API_PROVIDER_CUSTOM_ID, CODEX_API_PROVIDER_PRESETS, COCKPIT_API_PROVIDER_ID } from "../utils/codexProviderPresets";
+import { CODEX_API_PROVIDER_CUSTOM_ID, CODEX_VISIBLE_PROVIDER_PRESETS, COCKPIT_API_PROVIDER_ID } from "../utils/codexProviderPresets";
 import type { CodexAccountsViewProps } from "./CodexAccountsView";
 
 /** 渲染 CodexAccountsOverviewPanel 的 expr:showAddModal && 业务面板。 */
@@ -758,7 +758,7 @@ export function CodexAddAccountDialog(props: CodexAccountsViewProps) {
                                 />
                               </button>
                             ))}
-                            {CODEX_API_PROVIDER_PRESETS.map((preset) => (
+                            {CODEX_VISIBLE_PROVIDER_PRESETS.map((preset) => (
                               <button
                                 key={preset.id}
                                 className={`api-provider-chip ${apiProviderPresetId === preset.id ? "active" : ""}`}

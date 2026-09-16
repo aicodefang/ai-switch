@@ -6,7 +6,7 @@ import { AccountTagFilterDropdown } from "../AccountTagFilterDropdown";
 import { PaginationControls } from "../PaginationControls";
 import { CodexModelContextWindowTable } from "./CodexModelContextWindowTable";
 import { resolveNewApiQuotaSnapshot } from "../../services/modelProviderUsageService";
-import { CODEX_API_PROVIDER_CUSTOM_ID, CODEX_API_PROVIDER_PRESETS, DEEPSEEK_API_PROVIDER_ID, resolveCodexApiProviderPresetId } from "../../utils/codexProviderPresets";
+import { CODEX_API_PROVIDER_CUSTOM_ID, CODEX_VISIBLE_PROVIDER_PRESETS, DEEPSEEK_API_PROVIDER_ID, resolveCodexApiProviderPresetId } from "../../utils/codexProviderPresets";
 import { normalizeApiKeyFunOfficialUrl } from "../../utils/apikeyFunLinks";
 import { getCodexSubscriptionPresentation } from "../../types/codex";
 import { resolveCodexProviderCapabilityProfile } from "../../utils/codexProviderGateway";
@@ -1617,7 +1617,7 @@ export function CodexModelProviderManagerView(props: CodexModelProviderManagerVi
                       <Star size={12} className="api-provider-chip-badge" />
                     </button>
                   ))}
-                  {CODEX_API_PROVIDER_PRESETS.filter(
+                  {CODEX_VISIBLE_PROVIDER_PRESETS.filter(
                     (preset) => !preset.isService,
                   ).map((preset) => (
                     <button

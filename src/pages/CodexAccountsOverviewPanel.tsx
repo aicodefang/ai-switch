@@ -16,7 +16,7 @@ import { QuickSettingsPopover } from "../components/QuickSettingsPopover";
 import { MultiSelectFilterDropdown } from "../components/MultiSelectFilterDropdown";
 import { SingleSelectFilterDropdown } from "../components/SingleSelectFilterDropdown";
 import { SingleSelectDropdown } from "../components/SingleSelectDropdown";
-import { CODEX_API_PROVIDER_CUSTOM_ID, CODEX_API_PROVIDER_PRESETS, COCKPIT_API_PROVIDER_ID } from "../utils/codexProviderPresets";
+import { CODEX_API_PROVIDER_CUSTOM_ID, CODEX_VISIBLE_PROVIDER_PRESETS, COCKPIT_API_PROVIDER_ID } from "../utils/codexProviderPresets";
 import { formatCodexQuotaPoolPercent, formatCodexQuotaPoolWindowLabel } from "../utils/codexQuotaPool";
 import { getCodexLocalAccessRiskNoticeConfirmLabel } from "../utils/codexLocalAccessRiskNotice";
 import { getMfaOtpToken } from "../utils/mfaVault";
@@ -1529,7 +1529,7 @@ export function CodexAccountsOverviewPanel(props: CodexAccountsViewProps) {
                             {t("codex.api.provider.custom", "自定义")}
                           </span>
                         </button>
-                        {CODEX_API_PROVIDER_PRESETS.map((preset) => (
+                        {CODEX_VISIBLE_PROVIDER_PRESETS.map((preset) => (
                           <button
                             key={preset.id}
                             className={`api-provider-chip ${editingApiProviderPresetId === preset.id ? "active" : ""}`}
