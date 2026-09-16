@@ -81,7 +81,7 @@ const PAGE_PLATFORM_MAP: Partial<Record<Page, PlatformId>> = {
   workbuddy: 'workbuddy',
 };
 
-const APP_DISPLAY_NAME = 'ModSwitch';
+const APP_DISPLAY_NAME = 'ai-switch';
 
 const CLASSIC_NAV_MIN_SCALE = 0.5;
 const CLASSIC_NAV_SCALE_EPSILON = 0.004;
@@ -900,7 +900,7 @@ export function SideNav({
             onClick={handleLogoClick}
             title={hasBreakoutSession ? t('breakout.resumeGameNav', '继续游戏') : undefined}
           >
-            <img src={appLogo} alt="ModSwitch" width={isClassicLayout ? classicBrandLogoIconSize + 12 : 32} height={isClassicLayout ? classicBrandLogoIconSize + 12 : 32} />
+            <img src={appLogo} alt="ai-switch" width={isClassicLayout ? classicBrandLogoIconSize + 12 : 32} height={isClassicLayout ? classicBrandLogoIconSize + 12 : 32} />
             {hasBreakoutSession && <span className="rocket-session-indicator" aria-hidden="true" />}
             {!hasBreakoutSession && easterEggClickCount > 0 && (
               <span className="rocket-click-count">{easterEggClickCount}</span>

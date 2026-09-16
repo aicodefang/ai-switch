@@ -447,7 +447,8 @@ mod codex_path_migration_tests {
 #[cfg(all(test, target_os = "windows"))]
 mod tests {
     use super::{
-        running_app_candidate_matches, windows_app_launch_signature,
+        codex_store_package_priority, running_app_candidate_matches,
+        windows_app_launch_signature,
         windows_trae_candidate_matches_platform,
     };
     use crate::modules::trae_account::TraePlatformKind;
@@ -515,6 +516,14 @@ mod tests {
             .exe_names
             .iter()
             .any(|name| name.eq_ignore_ascii_case("Codex.exe")));
+    }
+
+    #[test]
+    fn standalone_codex_store_package_has_priority_over_chatgpt() {
+        assert!(
+            codex_store_package_priority("OpenAI.Codex_1.0.0.0_x64__example")
+                > codex_store_package_priority("OpenAI.ChatGPT_1.0.0.0_x64__example")
+        );
     }
 
     #[test]

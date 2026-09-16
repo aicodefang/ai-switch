@@ -1,0 +1,277 @@
+name: Desktop release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      prerelease:
+        description: Publish as a prerelease
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Validate release version
+        id: version
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const version = require('./package.json').version;
+          const tauri = require('./src-tauri/tauri.conf.json').version;
+          const cargo = fs.readFileSync('src-tauri/Cargo.toml', 'utf8').match(/^version = "([^"]+)"/m)?.[1];
+          if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version) || version !== tauri || version !== cargo) {
+            throw new Error('package.json, Tauri and Cargo release versions must match');
+          }
+          const tag = `v${version}`;
+          if (process.env.GITHUB_REF_TYPE === 'tag' && process.env.GITHUB_REF_NAME !== tag) {
+            throw new Error(`Expected release tag ${tag}`);
+          }
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `tag=${tag}\nversion=${version}\n`);
+          NODE
+      - name: Check existing tag points to this commit
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        shell: bash
+        run: |
+          if git show-ref --verify --quiet "refs/tags/$RELEASE_TAG"; then
+            test "$(git rev-parse "$RELEASE_TAG^{commit}")" = "$(git rev-parse HEAD)"
+          fi
+      - run: npm ci
+      - run: npm test
+      - run: npm run test:release
+
+  build:
+    needs: prepare
+    name: Build ${{ matrix.platform }} ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos
+            arch: aarch64
+            runner: macos-15
+            target: aarch64-apple-darwin
+            bundles: app,dmg
+          - platform: macos
+            arch: x64
+            runner: macos-15-intel
+            target: x86_64-apple-darwin
+            bundles: app,dmg
+          - platform: windows
+            arch: aarch64
+            runner: windows-11-arm
+            target: aarch64-pc-windows-msvc
+            bundles: nsis
+          - platform: windows
+            arch: x64
+            runner: windows-2022
+            target: x86_64-pc-windows-msvc
+            bundles: nsis
+          - platform: linux
+            arch: aarch64
+            runner: ubuntu-22.04-arm
+            target: aarch64-unknown-linux-gnu
+            bundles: deb,rpm,appimage
+          - platform: linux
+            arch: x64
+            runner: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            bundles: deb,rpm,appimage
+    defaults:
+      run:
+        shell: bash
+    env:
+      CARGO_INCREMENTAL: '0'
+      APPIMAGE_EXTRACT_AND_RUN: '1'
+      AIMODEL_DIRECT_SWIFT: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-${{ matrix.target }}
+          cache-on-failure: true
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: sidecars/cockpit-cliproxy/go.mod
+          cache-dependency-path: sidecars/cockpit-cliproxy/go.sum
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev \
+            patchelf libfuse2 rpm libsecret-tools xdg-utils
+      - run: npm ci
+      - name: Import Developer ID into a temporary keychain
+        if: runner.os == 'macOS'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          test -n "$APPLE_CERTIFICATE" || { echo 'APPLE_CERTIFICATE is required'; exit 1; }
+          test -n "$APPLE_CERTIFICATE_PASSWORD" || { echo 'APPLE_CERTIFICATE_PASSWORD is required'; exit 1; }
+          umask 077
+          certificate="$RUNNER_TEMP/developer-id.p12"
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          password=$(openssl rand -hex 32)
+          echo "::add-mask::$password"
+          printf '%s' "$APPLE_CERTIFICATE" | base64 --decode > "$certificate"
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          security import "$certificate" -k "$keychain" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$password" "$keychain" >/dev/null
+          security list-keychains -d user -s "$keychain" "$HOME/Library/Keychains/login.keychain-db"
+          curl --fail --location --retry 3 https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer \
+            --output "$RUNNER_TEMP/DeveloperIDG2CA.cer"
+          security import "$RUNNER_TEMP/DeveloperIDG2CA.cer" -k "$keychain"
+          identity=$(security find-identity -v -p codesigning "$keychain" | sed -n 's/.*"\(Developer ID Application:.*\)".*/\1/p')
+          test -n "$identity" || { echo 'No valid Developer ID Application identity'; exit 1; }
+          printf 'APPLE_SIGNING_IDENTITY=%s\n' "$identity" >> "$GITHUB_ENV"
+          rm "$certificate"
+      - name: Configure optional Apple notarization
+        if: runner.os == 'macOS'
+        env:
+          NOTARY_APPLE_ID: ${{ secrets.APPLE_ID }}
+          NOTARY_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          NOTARY_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [[ -z "$NOTARY_APPLE_ID$NOTARY_PASSWORD$NOTARY_TEAM_ID" ]]; then
+            echo '::warning::Apple notarization credentials are absent; this release will be signed but not notarized.'
+            echo 'NOTARIZED=false' >> "$GITHUB_ENV"
+          else
+            test -n "$NOTARY_APPLE_ID" && test -n "$NOTARY_PASSWORD" && test -n "$NOTARY_TEAM_ID"
+            echo "APPLE_ID=$NOTARY_APPLE_ID" >> "$GITHUB_ENV"
+            echo "APPLE_PASSWORD=$NOTARY_PASSWORD" >> "$GITHUB_ENV"
+            echo "APPLE_TEAM_ID=$NOTARY_TEAM_ID" >> "$GITHUB_ENV"
+            echo 'NOTARIZED=true' >> "$GITHUB_ENV"
+          fi
+      # Use the CLI directly: scripts/tauri.cjs selects an x64-only Windows developer shell.
+      - name: Build native installers
+        run: |
+          node -e "require('node:fs').rmSync('target/${{ matrix.target }}/release/bundle', { recursive: true, force: true })"
+          npx tauri build --target '${{ matrix.target }}' --bundles '${{ matrix.bundles }}' -- --locked
+      - name: Verify macOS signing and archive the app
+        if: runner.os == 'macOS'
+        run: |
+          bundle="target/${{ matrix.target }}/release/bundle"
+          codesign --verify --deep --strict "$bundle/macos/ai-switch.app"
+          codesign -dv --verbose=2 "$bundle/macos/ai-switch.app" 2>&1 | grep 'Authority=Developer ID Application:'
+          for dmg in "$bundle/dmg/"*.dmg; do
+            codesign --verify --strict "$dmg"
+            hdiutil verify "$dmg"
+          done
+          if [[ "$NOTARIZED" == true ]]; then
+            xcrun stapler validate "$bundle/macos/ai-switch.app"
+            spctl --assess --type execute --verbose "$bundle/macos/ai-switch.app"
+          fi
+          tar -czf "$bundle/macos/ai-switch.app.tar.gz" -C "$bundle/macos" ai-switch.app
+      - name: Collect release packages
+        run: |
+          node scripts/release/stage_release_assets.cjs \
+            --platform '${{ matrix.platform }}' --mac-arch '${{ matrix.arch }}' \
+            --assets-dir 'target/${{ matrix.target }}/release/bundle' --output-dir package-output
+          printf 'Commit: %s\nTarget: %s\nmacOS notarized: %s\n' \
+            "$GITHUB_SHA" '${{ matrix.target }}' "${NOTARIZED:-not-applicable}" \
+            > 'package-output/BUILD-${{ matrix.platform }}-${{ matrix.arch }}.txt'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.platform }}-${{ matrix.arch }}
+          path: package-output/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Remove signing material
+        if: always() && runner.os == 'macOS'
+        run: |
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          if [[ -f "$keychain" ]]; then security delete-keychain "$keychain"; fi
+          if [[ -f "$RUNNER_TEMP/developer-id.p12" ]]; then rm "$RUNNER_TEMP/developer-id.p12"; fi
+
+  publish:
+    needs: [prepare, build]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: release-assets
+          merge-multiple: true
+      - name: Generate checksums
+        working-directory: release-assets
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const files = fs.readdirSync('.');
+          for (const suffix of ['.dmg', '.app.tar.gz', '-setup.exe', '.deb', '.rpm', '.AppImage']) {
+            if (files.filter(name => name.endsWith(suffix)).length !== 2) {
+              throw new Error(`Expected both architectures for ${suffix}`);
+            }
+          }
+          for (const platform of ['macos', 'windows', 'linux']) {
+            for (const arch of ['aarch64', 'x64']) {
+              const info = fs.readFileSync(`BUILD-${platform}-${arch}.txt`, 'utf8');
+              if (!info.includes(`Commit: ${process.env.GITHUB_SHA}\n`)) {
+                throw new Error(`Wrong build commit for ${platform}-${arch}`);
+              }
+            }
+          }
+          NODE
+          sha256sum -- * > SHA256SUMS.txt
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+          PRERELEASE: ${{ inputs.prerelease || contains(needs.prepare.outputs.version, '-') }}
+        shell: bash
+        run: |
+          if ! git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG"; then
+            gh api "repos/$GH_REPO/git/refs" -f "ref=refs/tags/$RELEASE_TAG" -f "sha=$GITHUB_SHA"
+          fi
+          # Checkout may create a lightweight local tag for an annotated remote tag.
+          # Fetch into FETCH_HEAD to validate the commit without replacing local tags.
+          git fetch --no-tags origin "refs/tags/$RELEASE_TAG"
+          test "$(git rev-parse 'FETCH_HEAD^{commit}')" = "$(git rev-parse HEAD)"
+          if gh release view "$RELEASE_TAG" --json isDraft > "$RUNNER_TEMP/release.json" 2>/dev/null; then
+            node -e "if (!require(process.argv[1]).isDraft) throw new Error('Release already published; bump the version instead of replacing its assets')" "$RUNNER_TEMP/release.json"
+          else
+            gh release create "$RELEASE_TAG" --target "$GITHUB_SHA" --draft \
+              --title "ai-switch $RELEASE_TAG" --generate-notes
+          fi
+          gh release upload "$RELEASE_TAG" release-assets/* --clobber
+          gh release edit "$RELEASE_TAG" --draft=false --prerelease="$PRERELEASE"

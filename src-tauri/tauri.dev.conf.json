@@ -1,12 +1,12 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "ModSwitch Dev",
+  "productName": "ai-switch Dev",
   "identifier": "io.aicodefang.aimodel-switch.dev",
   "app": {
     "windows": [
       {
         "label": "main",
-        "title": "ModSwitch Dev",
+        "title": "ai-switch Dev",
         "width": 1280,
         "height": 800,
         "minWidth": 900,
@@ -19,7 +19,7 @@
       },
       {
         "label": "floating-card",
-        "title": "ModSwitch Dev",
+        "title": "ai-switch Dev",
         "create": false,
         "width": 250,
         "height": 290,
