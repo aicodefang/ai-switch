@@ -1041,7 +1041,7 @@ export function SettingsGeneralPanel(props: SettingsPageViewProps) {
                   <div className="row-desc">
                     {t(
                       'settings.general.themeColorDesc',
-                      '在浅色/深色之上叠加配色包（Nord、Tokyo Night 等）'
+                      '默认使用海盐蓝，支持浅色、深色及其他配色包'
                     )}
                   </div>
                 </div>
@@ -1059,7 +1059,7 @@ export function SettingsGeneralPanel(props: SettingsPageViewProps) {
                       }
                     }}
                   >
-                    <option value="default">{t('settings.general.themeColorDefault', '默认')}</option>
+                    <option value="default">{t('settings.general.themeColorDefault', '海盐蓝（默认）')}</option>
                     <option value="nord">{t('settings.general.themeColorNord', 'Nord')}</option>
                     <option value="tokyo-night">
                       {t('settings.general.themeColorTokyoNight', 'Tokyo Night')}

@@ -1,0 +1,99 @@
+/* Sea Salt Blue is the default pack. Keep persisted pack IDs compatible. */
+:root:is(:not([data-theme-color]), [data-theme-color="default"]) {
+  --primary: #2459a6;
+  --primary-hover: #1c4889;
+  --primary-light: #e1eaf5;
+  --accent: #286a85;
+  --text-on-primary: #ffffff;
+  --bg-primary: #f0f4f8;
+  --bg-secondary: #ffffff;
+  --bg-surface: var(--bg-secondary);
+  --bg-card: var(--bg-secondary);
+  --bg-tertiary: #e1eaf5;
+  --bg-hover: #e1eaf5;
+  --text-primary: #172b45;
+  --text-secondary: #3c506b;
+  --text-muted: #52647a;
+  --border: #b9c9dc;
+  --border-color: var(--border);
+  --border-light: #d3ddea;
+  --border-hover: #819ab9;
+  --gradient-primary: linear-gradient(var(--primary), var(--primary));
+  --accounts-primary: var(--primary);
+  --accounts-accent: var(--accent);
+  --shadow-sm: 0 2px 6px rgba(23, 43, 69, 0.05);
+  --shadow-md: 0 8px 20px rgba(23, 43, 69, 0.08);
+  --shadow-lg: 0 16px 36px rgba(23, 43, 69, 0.12);
+}
+
+:root:is(:not([data-theme-color]), [data-theme-color="default"])[data-theme="dark"] {
+  --primary: #8dbbff;
+  --primary-hover: #a6caff;
+  --primary-light: #2f415a;
+  --accent: #8acbdc;
+  --text-on-primary: #142641;
+  --bg-primary: #151e2b;
+  --bg-secondary: #202d3f;
+  --bg-tertiary: #2f415a;
+  --bg-hover: #2f415a;
+  --text-primary: #edf3fc;
+  --text-secondary: #c7d5e8;
+  --text-muted: #a9bcd4;
+  --border: #4b6280;
+  --border-light: #394c65;
+  --border-hover: #7894b7;
+  --shadow-sm: 0 2px 6px rgba(0, 0, 0, 0.12);
+  --shadow-md: 0 8px 20px rgba(0, 0, 0, 0.16);
+  --shadow-lg: 0 16px 36px rgba(0, 0, 0, 0.22);
+}
+
+/* Opaque, quiet surfaces keep small account details readable. */
+html:is(:not([data-theme-color]), [data-theme-color="default"]) body {
+  background: var(--bg-primary);
+}
+
+:root:is(:not([data-theme-color]), [data-theme-color="default"]) .nav-item.active {
+  background: var(--primary-light);
+  color: var(--primary);
+}
+
+:root:is(:not([data-theme-color]), [data-theme-color="default"]) .btn-primary {
+  box-shadow: var(--shadow-sm);
+  border-color: transparent;
+}
+
+:root:is(:not([data-theme-color]), [data-theme-color="default"]) .btn-primary:hover:not(:disabled) {
+  background: var(--primary-hover);
+  box-shadow: var(--shadow-md);
+}
+
+/* Filled primary controls need dark ink on the light blue dark-mode fill. */
+:root:is(:not([data-theme-color]), [data-theme-color="default"]) :is(
+  .update-quick-action-btn.is-ready,
+  .qs-btn--primary,
+  .qs-btn--primary:hover,
+  .silent-update-btn-restart,
+  .update-icon,
+  .codex-experimental-model-editor__add-menu-item.is-added .codex-experimental-model-editor__menu-checkbox,
+  .codex-model-routing-card__pill.is-selected .codex-model-routing-card__pill-checkbox,
+  .app-icon-squircle,
+  .btn-primary,
+  .brand-logo,
+  .accounts-page .view-btn.active,
+  .accounts-page .filter-tabs:not(.page-tabs) .filter-tab.active,
+  .folder-inline-icon,
+  .codex-accounts-page .view-btn.active,
+  .codex-accounts-page .codex-provider-inline-switch:hover:not(:disabled),
+  .codex-add-modal .modal-tab.active,
+  .codex-add-modal .api-provider-chip.active,
+  .codex-provider-modal .api-provider-chip.active,
+  .codex-local-access-gateway-guide-action,
+  .ghcp-accounts-page .view-btn.active,
+  .ghcp-add-modal .modal-tab.active,
+  .add-tab.active,
+  .wakeup-toggle-group .btn.is-active,
+  .wakeup-segment-btn.active,
+  .wakeup-chip.selected
+) {
+  color: var(--text-on-primary);
+}

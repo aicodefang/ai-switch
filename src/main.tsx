@@ -19,6 +19,7 @@ void initI18n();
 void (async () => {
   const { default: App } = await import("./App");
   await import("./styles/aimodel-readability.css");
+  await import("./styles/sea-salt-theme.css");
 
   const rootElement = document.getElementById("root");
   if (!rootElement) {

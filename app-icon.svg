@@ -11,10 +11,15 @@
   </defs>
   <rect x="24" y="24" width="464" height="464" rx="108" fill="url(#tile)"/>
   <rect x="26" y="26" width="460" height="460" rx="106" fill="none" stroke="#FFFFFF" stroke-opacity=".12" stroke-width="4"/>
-  <g fill="none" stroke-width="36" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M134 196h244l-58-58" stroke="url(#switch)"/>
-    <path d="M378 316H134l58 58" stroke="#54E0CB"/>
+  <g fill="none" stroke-width="32" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M134 160h244l-48-48" stroke="url(#switch)"/>
+    <path d="M378 352H134l48 48" stroke="#54E0CB"/>
   </g>
-  <circle cx="134" cy="196" r="18" fill="#C8DDFF"/>
-  <circle cx="378" cy="316" r="18" fill="#B5FFF0"/>
+  <circle cx="134" cy="160" r="16" fill="#C8DDFF"/>
+  <circle cx="378" cy="352" r="16" fill="#B5FFF0"/>
+  <!-- Outlined letterforms keep the AI mark identical on every platform. -->
+  <g fill="#F2F7FF">
+    <path fill-rule="evenodd" d="M166 302l37-92h30l37 92h-28l-6-18h-36l-6 18h-28Zm41-40h22l-11-32-11 32Z"/>
+    <path d="M286 210h60v22h-17v48h17v22h-60v-22h17v-48h-17Z"/>
+  </g>
 </svg>
