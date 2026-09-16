@@ -260,12 +260,13 @@ jobs:
           PRERELEASE: ${{ inputs.prerelease || contains(needs.prepare.outputs.version, '-') }}
         shell: bash
         run: |
-          git fetch origin --tags
-          if ! git show-ref --verify --quiet "refs/tags/$RELEASE_TAG"; then
+          if ! git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG"; then
             gh api "repos/$GH_REPO/git/refs" -f "ref=refs/tags/$RELEASE_TAG" -f "sha=$GITHUB_SHA"
           fi
-          git fetch origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
-          test "$(git rev-parse "$RELEASE_TAG^{commit}")" = "$(git rev-parse HEAD)"
+          # Checkout may create a lightweight local tag for an annotated remote tag.
+          # Fetch into FETCH_HEAD to validate the commit without replacing local tags.
+          git fetch --no-tags origin "refs/tags/$RELEASE_TAG"
+          test "$(git rev-parse 'FETCH_HEAD^{commit}')" = "$(git rev-parse HEAD)"
           if gh release view "$RELEASE_TAG" --json isDraft > "$RUNNER_TEMP/release.json" 2>/dev/null; then
             node -e "if (!require(process.argv[1]).isDraft) throw new Error('Release already published; bump the version instead of replacing its assets')" "$RUNNER_TEMP/release.json"
           else
