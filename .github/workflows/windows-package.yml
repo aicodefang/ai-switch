@@ -19,9 +19,23 @@ jobs:
           node-version: '22'
           cache: npm
       - uses: dtolnay/rust-toolchain@stable
+      - name: Cache Rust dependencies and build output
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: windows-cargo-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            windows-cargo-${{ runner.arch }}-
       - uses: actions/setup-go@v5
         with:
           go-version: '1.27'
+          cache: true
+          cache-dependency-path: sidecars/cockpit-cliproxy/go.sum
       - run: npm ci
       - run: npm test
       - name: Build Windows x64 installer
