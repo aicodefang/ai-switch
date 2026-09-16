@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "ModSwitch",
+  "productName": "ai-switch",
   "version": "0.2.0",
   "identifier": "io.aicodefang.aimodel-switch",
   "build": {
@@ -14,7 +14,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "ModSwitch",
+        "title": "ai-switch",
         "width": 1280,
         "height": 800,
         "minWidth": 900,
@@ -27,7 +27,7 @@
       },
       {
         "label": "floating-card",
-        "title": "ModSwitch",
+        "title": "ai-switch",
         "create": false,
         "width": 250,
         "height": 290,
@@ -97,7 +97,7 @@
       "../src/assets/icons/zcode.png": "native-menu-icons/zcode.png"
     },
     "macOS": {
-      "bundleName": "ModSwitch",
+      "bundleName": "ai-switch",
       "infoPlist": "Info.plist"
     }
   },

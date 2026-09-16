@@ -40,7 +40,7 @@ jobs:
           "Commit: $env:GITHUB_SHA" | Set-Content package-output/BUILD.txt -Encoding ascii
       - uses: actions/upload-artifact@v4
         with:
-          name: ModSwitch-Windows-x64
+          name: ai-switch-Windows-x64
           path: package-output/
           if-no-files-found: error
           retention-days: 30
