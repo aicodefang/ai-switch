@@ -1,6 +1,6 @@
-# AIModel Switch
+# ModSwitch
 
-<img src="app-icon.svg" alt="AIModel Switch Logo" width="96" height="96" />
+<img src="app-icon.svg" alt="ModSwitch Logo" width="96" height="96" />
 
 面向 Codex 和 Claude Code 的桌面配置管理工具，集中管理账号、API 接口、供应商和模型，方便在不同账号与配置之间切换。
 
