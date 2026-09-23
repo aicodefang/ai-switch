@@ -2,7 +2,11 @@
 // 通过 include! 保持原 modules::codex_account 作用域，完整保留私有调用关系。
 /// 从官方 Codex 本机凭据存储导入账号（auth.json / macOS Keychain）
 pub fn import_from_local() -> Result<CodexAccount, String> {
-    let codex_home = get_codex_home();
+    import_from_local_at(&get_codex_home())
+}
+
+/// 从指定 Codex profile 目录导入账号，供临时登录和多实例流程使用。
+pub fn import_from_local_at(codex_home: &Path) -> Result<CodexAccount, String> {
     let auth_path = codex_home.join("auth.json");
     let content = fs::read_to_string(&auth_path).ok();
     let raw_value = content

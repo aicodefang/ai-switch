@@ -21,6 +21,7 @@ pub mod codebuddy_cn_oauth;
 pub mod codebuddy_instance;
 pub mod codebuddy_oauth;
 pub mod codebuddy_session;
+pub mod codebuddy_session_list;
 pub mod codebuddy_session_transfer;
 pub mod codex_account;
 pub mod codex_agent_identity;

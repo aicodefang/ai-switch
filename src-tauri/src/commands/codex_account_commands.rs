@@ -1662,7 +1662,7 @@ fn apply_codex_switch_auth_projections(account: &CodexAccount, user_config: &con
 }
 
 /// Re-activate current account after import when needed, then project auth side effects.
-async fn reactivate_imported_current_if_needed(imported: &[CodexAccount]) {
+pub async fn reactivate_imported_current_if_needed(imported: &[CodexAccount]) {
     if let Some(account) = codex_account::reactivate_if_imported_matches_current(imported).await {
         let user_config = config::get_user_config();
         apply_codex_switch_auth_projections(&account, &user_config);
@@ -1672,7 +1672,7 @@ async fn reactivate_imported_current_if_needed(imported: &[CodexAccount]) {
     }
 }
 
-async fn refresh_imported_codex_accounts(
+pub async fn refresh_imported_codex_accounts(
     app: &AppHandle,
     accounts: Vec<CodexAccount>,
 ) -> Vec<CodexAccount> {

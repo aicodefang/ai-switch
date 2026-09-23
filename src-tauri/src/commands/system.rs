@@ -20,6 +20,13 @@ pub async fn save_ui_preferences(
         .await.map_err(|error| format!("保存界面偏好任务失败: {}", error))?
 }
 
+#[tauri::command]
+pub fn codebuddy_list_local_session_files(
+    limit: Option<usize>,
+) -> Vec<modules::codebuddy_session_list::CodebuddySessionFileEntry> {
+    modules::codebuddy_session_list::list_local_session_files(limit.unwrap_or(100))
+}
+
 #[cfg(test)]
 mod tests {
     include!("system_tests.rs");

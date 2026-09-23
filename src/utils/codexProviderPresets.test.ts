@@ -14,20 +14,21 @@ import {
 } from "./codexProviderPresets.ts";
 import { resolveCodexProviderCapabilityProfile } from "./codexProviderGateway.ts";
 
-test("provider choices only expose OpenAI, Azure and tuantuan beside custom", () => {
+test("provider choices only expose OpenAI, Azure and tuantuianai beside custom", () => {
   assert.deepEqual(CODEX_VISIBLE_PROVIDER_PRESETS.map((preset) => preset.id), [
-    "openai_official", "azure_openai", "tuantuan",
+    "openai_official", "azure_openai", "tuantuianai",
   ]);
 });
 
-test("tuantuan exposes both requested selectable endpoints", () => {
-  const preset = findCodexApiProviderPresetById("tuantuan");
+test("tuantuianai exposes both requested selectable endpoints and the legacy id", () => {
+  const preset = findCodexApiProviderPresetById("tuantuianai");
   assert.ok(preset);
+  assert.equal(findCodexApiProviderPresetById("tuantuan")?.id, "tuantuianai");
   assert.deepEqual(preset.baseUrls, [
     "https://hk1.heliumlabz.com", "https://openai.heliumlabz.com",
   ]);
   for (const endpoint of preset.baseUrls) {
-    assert.equal(findCodexApiProviderPresetByBaseUrl(`${endpoint}/`)?.id, "tuantuan");
+    assert.equal(findCodexApiProviderPresetByBaseUrl(`${endpoint}/`)?.id, "tuantuianai");
   }
 });
 

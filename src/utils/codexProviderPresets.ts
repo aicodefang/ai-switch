@@ -78,12 +78,12 @@ export const OPENCODE_GO_CODEX_MODEL_CATALOG = [
 const COCKPIT_API_HIDDEN_BASE_URLS = [COCKPIT_API_BASE_URL] as const;
 
 /** Choices shown in the UI; legacy presets remain available for saved accounts. */
-export const CODEX_VISIBLE_PROVIDER_IDS: readonly string[] = ["openai_official", "azure_openai", "tuantuan"];
+export const CODEX_VISIBLE_PROVIDER_IDS: readonly string[] = ["openai_official", "azure_openai", "tuantuianai"];
 
 export const CODEX_API_PROVIDER_PRESETS: readonly CodexApiProviderPreset[] = [
   {
-    id: "tuantuan",
-    name: "tuantuan",
+    id: "tuantuianai",
+    name: "tuantuianai",
     baseUrls: ["https://hk1.heliumlabz.com", "https://openai.heliumlabz.com"],
     website: "https://hk1.heliumlabz.com",
   },
@@ -450,7 +450,8 @@ function normalizeCodexProviderBaseUrl(value: string): string | null {
 export function findCodexApiProviderPresetById(
   id: string,
 ): CodexApiProviderPreset | null {
-  return CODEX_API_PROVIDER_PRESETS.find((preset) => preset.id === id) ?? null;
+  const canonicalId = id.trim().toLowerCase() === "tuantuan" ? "tuantuianai" : id;
+  return CODEX_API_PROVIDER_PRESETS.find((preset) => preset.id === canonicalId) ?? null;
 }
 
 export function findCodexApiProviderPresetByBaseUrl(
