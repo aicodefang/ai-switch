@@ -51,3 +51,6 @@ target/
 docs/plugin-architecture-proposal.md
 .aitasks
 .qoder/
+
+AGENTS.md
+PROJECT_CONTEXT.md
