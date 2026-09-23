@@ -3,7 +3,6 @@ import {
   lazy,
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
   type MouseEvent as ReactMouseEvent,
@@ -25,10 +24,8 @@ import { CodexInstanceLaunchProgressModal } from './components/CodexInstanceLaun
 import { CodexPelicanHost } from './components/codex/pelican/CodexPelicanHost';
 import { AnnouncementHost } from './components/AnnouncementCenter';
 import { isFocusedPage, UPSTREAM_REMOTE_SERVICES_ENABLED } from './productScope';
-import { TopCenterPromoBanner } from './components/TopCenterPromoBanner';
 import type { QuickSettingsType } from './components/QuickSettingsPopover';
 import { isMainWindowNavigablePage, type Page } from './types/navigation';
-import type { TopRightAd } from './types/topRightAd';
 import { useAutoRefresh } from './hooks/useAutoRefresh';
 import { useEasterEggTrigger } from './hooks/useEasterEggTrigger';
 import { useGlobalModal } from './hooks/useGlobalModal';
@@ -232,103 +229,6 @@ const RENDERABLE_PAGE_VALUES: readonly Page[] = [
   'settings',
 ];
 const RENDERABLE_PAGE_SET = new Set<string>(RENDERABLE_PAGE_VALUES.filter(isFocusedPage));
-
-const TOP_PROMO_DEFAULT_EXCLUDED_PAGES: readonly Page[] = ['api-relay', 'settings'];
-const TOP_PROMO_PAGE_PLATFORM_TARGETS: Partial<Record<Page, readonly string[]>> = {
-  overview: ['antigravity', 'antigravity-ide'],
-  instances: ['antigravity', 'antigravity-ide'],
-  wakeup: ['antigravity', 'antigravity-ide'],
-  verification: ['antigravity', 'antigravity-ide'],
-  codex: ['codex'],
-  'codex-api-service': ['codex_api_service', 'codex'],
-  'codex-instances': ['codex'],
-  claude: ['claude', 'claude-manager'],
-  'claude-cli': ['claude', 'claude-manager'],
-  zed: ['zed'],
-  'github-copilot': ['github-copilot'],
-  windsurf: ['windsurf'],
-  kiro: ['kiro'],
-  cursor: ['cursor'],
-  grok: ['grok'],
-  codebuddy: ['codebuddy'],
-  'codebuddy-cn': ['codebuddy-cn'],
-  qoder: ['qoder'],
-  zcode: ['zcode'],
-  trae: ['trae', 'trae-suite'],
-  'trae-solo': ['trae-solo', 'trae-suite'],
-  'trae-cn': ['trae-cn', 'trae-suite'],
-  'trae-solo-cn': ['trae-solo-cn', 'trae-suite'],
-  workbuddy: ['workbuddy'],
-};
-
-function normalizePromoTarget(value: string): string {
-  return value.trim().toLowerCase().replace(/_/g, '-');
-}
-
-function normalizePromoTargets(values?: string[] | null): string[] {
-  if (!Array.isArray(values)) {
-    return [];
-  }
-  return values
-    .map((value) => normalizePromoTarget(value))
-    .filter(Boolean);
-}
-
-function promoTargetsMatch(configuredTargets: string[], activeTargets: Set<string>): boolean {
-  return configuredTargets.some((target) => target === '*' || activeTargets.has(target));
-}
-
-function resolveTopPromoDisplayMode(ad: TopRightAd): string {
-  const mode = ad.displayMode ? normalizePromoTarget(ad.displayMode).replace(/[^a-z0-9]/g, '') : '';
-  if (!mode) {
-    return ad.displayPages?.length || ad.displayPlatforms?.length ? 'targets' : 'all';
-  }
-  return mode;
-}
-
-function isTopPromoAdVisibleOnPage(ad: TopRightAd, page: Page): boolean {
-  const pageTargets = new Set([normalizePromoTarget(page)]);
-  const platformTargets = new Set(
-    (TOP_PROMO_PAGE_PLATFORM_TARGETS[page] ?? []).map((value) => normalizePromoTarget(value)),
-  );
-  const displayPages = normalizePromoTargets(ad.displayPages);
-  const displayPlatforms = normalizePromoTargets(ad.displayPlatforms);
-  const pageMatches = promoTargetsMatch(displayPages, pageTargets);
-  const platformMatches = promoTargetsMatch(displayPlatforms, platformTargets);
-
-  if (
-    TOP_PROMO_DEFAULT_EXCLUDED_PAGES.includes(page)
-    && !pageMatches
-    && !displayPages.includes('*')
-  ) {
-    return false;
-  }
-
-  if (promoTargetsMatch(normalizePromoTargets(ad.excludePages), pageTargets)) {
-    return false;
-  }
-  if (promoTargetsMatch(normalizePromoTargets(ad.excludePlatforms), platformTargets)) {
-    return false;
-  }
-
-  switch (resolveTopPromoDisplayMode(ad)) {
-    case 'dashboard':
-      return page === 'dashboard';
-    case 'platforms':
-      return platformMatches;
-    case 'dashboardandplatforms':
-      return page === 'dashboard' || platformMatches;
-    case 'pages':
-      return pageMatches;
-    case 'dashboardandpages':
-      return page === 'dashboard' || pageMatches;
-    case 'targets':
-      return pageMatches || platformMatches;
-    case 'all':
-    default:
-      return true;
-  }
-}
 
 function normalizeStoredActivePage(value: string | null): Page | null {
   const normalized = value?.trim();
@@ -893,7 +793,6 @@ function MainApp() {
   const autoPromptedUpdateVersionsRef = useRef<Set<string>>(new Set());
   const externalImportHandledAtRef = useRef<Map<string, number>>(new Map());
   const { showModal, closeModal } = useGlobalModal();
-  const topRightAdState = useTopRightAdStore((state) => state.state);
   const fetchTopRightAdState = useTopRightAdStore((state) => state.fetchState);
   const forceRefreshTopRightAdState = useTopRightAdStore((state) => state.forceRefreshState);
   const sponsorModuleState = useSponsorStore((state) => state.state);
@@ -901,12 +800,8 @@ function MainApp() {
   const sponsorModuleInitialized = useSponsorStore((state) => state.initialized);
   const fetchRemoteConfigState = useRemoteConfigStore((state) => state.fetchState);
   const sponsorEntryVisible = Boolean(sponsorModuleState.sponsorModule);
-  const [topRightAdVisible, setTopRightAdVisible] = useState(true);
+  const [, setTopRightAdVisible] = useState(true);
   const topRightAdVisibleRef = useRef<boolean | null>(null);
-  const visibleTopCenterPromoAds = useMemo(
-    () => topRightAdState.ads.filter((ad) => isTopPromoAdVisibleOnPage(ad, page)),
-    [page, topRightAdState.ads],
-  );
   const trayRefreshInFlightRef = useRef(false);
   const openPlatformLayoutModal = useCallback(() => {
     setPlatformLayoutRequestedGroupId(null);

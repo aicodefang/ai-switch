@@ -1,5 +1,5 @@
 import { createPortal } from "react-dom";
-import { RefreshCw, Download, X, Globe, KeyRound, Database, Copy, Check, RotateCw, CircleAlert, Info, Star, Eye, EyeOff, FileUp, FileText, ExternalLink, FolderPlus, Monitor, Terminal, ShieldCheck } from "lucide-react";
+import { RefreshCw, Download, X, Globe, KeyRound, Database, Copy, Check, RotateCw, CircleAlert, Info, Eye, EyeOff, FileUp, FileText, ExternalLink, FolderPlus, Monitor, Terminal, ShieldCheck } from "lucide-react";
 import { ModalErrorMessage } from "../components/ModalErrorMessage";
 import { MfaQuickCodeSelect } from "../components/MfaQuickCodeSelect";
 import { SingleSelectDropdown } from "../components/SingleSelectDropdown";
@@ -109,7 +109,6 @@ export function CodexAddAccountDialog(props: CodexAccountsViewProps) {
     savingPendingOAuthAccount,
     selectedApiProviderPreset,
     selectedManagedProvider,
-    selectedSponsorApiProviderTemplate,
     setApiKeyInputVisible,
     setApiModelCatalogError,
     setApiModelCatalogInput,
@@ -119,7 +118,6 @@ export function CodexAddAccountDialog(props: CodexAccountsViewProps) {
     setTokenInput,
     shouldShowPendingOAuthDraftForm,
     showAddModal,
-    sponsorApiProviderTemplates,
     syncImportedToApiService,
     t,
     tempLoginAuthUrl,
