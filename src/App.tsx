@@ -3990,11 +3990,6 @@ function MainApp() {
       </Suspense>
 
       <div className="main-wrapper">
-        {topRightAdVisible && visibleTopCenterPromoAds.length > 0 ? (
-          <div className="app-global-promo-layer" aria-hidden={false}>
-            <TopCenterPromoBanner ads={visibleTopCenterPromoAds} reserveWhenEmpty={false} />
-          </div>
-        ) : null}
         {/* overview 现在是合并后的账号总览页面 */}
         <Suspense fallback={suspenseFallback}>
           <VisibleBootPage when={page === 'dashboard'}>

@@ -63,8 +63,169 @@ use tauri::{AppHandle, Emitter};
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::process::{Child, Command as TokioCommand};
-use tokio::sync::{oneshot, watch, Mutex as TokioMutex, Notify};
+use tokio::sync::{oneshot, watch, Mutex as TokioMutex, Notify, OwnedSemaphorePermit, Semaphore};
 use tokio::time::{timeout, Duration};
+
+const INTERNAL_REQUEST_CONCURRENCY: usize = 6;
+static INTERNAL_REQUEST_GATE: std::sync::LazyLock<Arc<Semaphore>> =
+    std::sync::LazyLock::new(|| Arc::new(Semaphore::new(INTERNAL_REQUEST_CONCURRENCY)));
+static INTERNAL_ACCOUNT_GATES: std::sync::LazyLock<Mutex<HashMap<String, Arc<Semaphore>>>> =
+    std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
+static INTERNAL_API_ACCOUNT_IDS: std::sync::LazyLock<Mutex<HashSet<String>>> =
+    std::sync::LazyLock::new(|| Mutex::new(HashSet::new()));
+static INTERNAL_API_SERVICE_KEY: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(generate_internal_api_service_key);
+
+fn generate_internal_api_service_key() -> String {
+    let suffix: String = rand::thread_rng()
+        .sample_iter(&Alphanumeric)
+        .take(48)
+        .map(char::from)
+        .collect();
+    format!("agt_internal_codex_{}", suffix)
+}
+
+fn internal_api_service_key() -> &'static str {
+    INTERNAL_API_SERVICE_KEY.as_str()
+}
+
+fn register_internal_api_account(account_id: &str) -> Result<(), String> {
+    let account_id = account_id.trim();
+    if account_id.is_empty() {
+        return Err("Codex API 内部请求缺少目标账号".to_string());
+    }
+    let mut accounts = INTERNAL_API_ACCOUNT_IDS
+        .lock()
+        .map_err(|_| "Codex API 内部账号范围不可用".to_string())?;
+    accounts.insert(account_id.to_string());
+    Ok(())
+}
+
+fn internal_api_account_ids() -> Vec<String> {
+    INTERNAL_API_ACCOUNT_IDS
+        .lock()
+        .map(|accounts| accounts.iter().cloned().collect())
+        .unwrap_or_default()
+}
+
+fn internal_api_service_required() -> bool {
+    !internal_api_account_ids().is_empty()
+}
+
+/// API 服务 sidecar 的运行条件：对外入口被启用，或者宿主内部调度仍需要它。
+///
+/// 用户停用 API 服务只关闭对外入口，唤醒与鹈鹕测试等内部请求依然复用同一进程，
+/// 因此生命周期判断必须同时考虑这两个条件。
+fn local_access_gateway_should_run(collection: &CodexLocalAccessCollection) -> bool {
+    collection.enabled || internal_api_service_required()
+}
+
+/// All host-triggered Codex requests share this scheduler. The account permit
+/// prevents a wakeup and a Pelican run from concurrently refreshing/consuming
+/// the same account while the global permit bounds total background pressure.
+pub(crate) async fn acquire_internal_request_permit(
+    account_id: &str,
+) -> Result<(OwnedSemaphorePermit, OwnedSemaphorePermit), String> {
+    let global = INTERNAL_REQUEST_GATE
+        .clone()
+        .acquire_owned()
+        .await
+        .map_err(|_| "Codex API 内部请求调度器已停止".to_string())?;
+    let account_gate = {
+        let mut gates = INTERNAL_ACCOUNT_GATES
+            .lock()
+            .map_err(|_| "Codex API 账号并发锁不可用".to_string())?;
+        gates
+            .entry(account_id.trim().to_string())
+            .or_insert_with(|| Arc::new(Semaphore::new(1)))
+            .clone()
+    };
+    let account = account_gate
+        .acquire_owned()
+        .await
+        .map_err(|_| "Codex API 账号请求调度器已停止".to_string())?;
+    Ok((global, account))
+}
+
+/// 统一承接宿主内部发起的 Codex 模型请求。
+///
+/// 内部调用也必须经过 API Service sidecar，这样账号选择、Token Authority、账号级并发、
+/// quota cooldown、重试和请求日志都与外部 API 请求使用同一条链路。请求只连接本机，
+/// 不复用上游代理，避免把内部控制头发到公网。
+async fn send_internal_api_service_request(
+    account_id: &str,
+    target: &str,
+    headers: &HashMap<String, String>,
+    body: &[u8],
+    request_timeout: Duration,
+) -> Result<reqwest::Response, String> {
+    let account_id = account_id.trim();
+    if account_id.is_empty() {
+        return Err("Codex API 内部请求缺少目标账号".to_string());
+    }
+    register_internal_api_account(account_id)?;
+    let target = resolve_internal_api_service_target(target)?;
+    ensure_runtime_loaded_without_start().await?;
+    ensure_gateway_matches_runtime().await?;
+
+    let (port, api_key, running) = {
+        let runtime = gateway_runtime().lock().await;
+        let collection = runtime
+            .collection
+            .as_ref()
+            .ok_or_else(|| "API 服务集合尚未创建".to_string())?;
+        (
+            collection.port,
+            internal_api_service_key().to_string(),
+            runtime.running,
+        )
+    };
+    if !running {
+        return Err("API 服务 sidecar 未运行，无法承接内部请求".to_string());
+    }
+    if api_key.is_empty() {
+        return Err("API 服务缺少内部 API Key".to_string());
+    }
+
+    let url = format!(
+        "http://{}:{}{}",
+        CODEX_LOCAL_ACCESS_LOCALHOST_BIND_HOST, port, target
+    );
+    let client = build_localhost_http_client(request_timeout, "API 服务内部请求")?;
+    let mut request = client
+        .post(&url)
+        .header(AUTHORIZATION, format!("Bearer {}", api_key))
+        .header("X-Cockpit-Target-Account-Id", account_id)
+        .header(CONTENT_TYPE, "application/json");
+    for (name, value) in headers {
+        if matches!(
+            name.as_str(),
+            "authorization" | "host" | "content-length" | "connection" | "x-api-key"
+        ) {
+            continue;
+        }
+        request = request.header(name, value);
+    }
+    request
+        .body(body.to_vec())
+        .send()
+        .await
+        .map_err(|error| format!("连接 API 服务 sidecar 失败: {}", error))
+}
+
+/// 宿主内部请求打到 API 服务 sidecar 时使用的路径。
+///
+/// 内部请求的输入仍是客户端路径形态（`/v1/*` 或 `/backend-api/codex/*`），但必须还原成
+/// sidecar 的对外路由路径：sidecar 只注册了 `/v1/*`（例如 `/v1/responses`），
+/// 直接拿上游路径 `/responses` 去请求只会命中 404 `endpoint not supported`，
+/// 唤醒与鹈鹕测试都会因此不可用。
+fn resolve_internal_api_service_target(target: &str) -> Result<String, String> {
+    let upstream_path = resolve_upstream_target(target)?;
+    Ok(match upstream_path.as_str() {
+        "/" => "/v1".to_string(),
+        _ => format!("/v1{}", upstream_path),
+    })
+}
 #[cfg(test)]
 use tokio_tungstenite::client_async_tls_with_config;
 #[cfg(test)]
@@ -106,9 +267,11 @@ const CODEX_PROVIDER_MODEL_SHELL_POOL: &[&str] = &[
     "gpt-5.3-codex-spark",
     "gpt-5.2",
 ];
-// Keep Astra available as an identity-preserving shell when an upstream account
-// already exposes that exact model, without assigning it to unrelated overflow models.
-const CODEX_PROVIDER_IDENTITY_ONLY_MODEL_IDS: &[&str] = &["gpt-6-astra"];
+// Keep the GPT-6 family available as identity-preserving shells when an upstream
+// account already exposes those exact models, without assigning them to unrelated
+// overflow models.
+const CODEX_PROVIDER_IDENTITY_ONLY_MODEL_IDS: &[&str] =
+    &["gpt-6-astra", "gpt-6-sol", "gpt-6-luna"];
 const CODEX_PROVIDER_GATEWAY_STATE_FILE: &str = "state.json";
 const CODEX_LOCAL_ACCESS_SIDECAR_CONFIG_FILE: &str = "config.json";
 const CODEX_LOCAL_ACCESS_SIDECAR_MANIFEST_FILE: &str = "manifest.json";
@@ -131,7 +294,13 @@ const CODEX_LOCAL_ACCESS_API_PORT_ENV: &str = "COCKPIT_TOOLS_API_PORT";
 const CODEX_LOCAL_ACCESS_DEV_DEFAULT_PORT: u16 = 1456;
 const CODEX_LOCAL_ACCESS_TAKEOVER_BACKUP_VERSION: u32 = 1;
 const CODEX_LOCAL_ACCESS_RUNTIME_PROVIDER_ID: &str = "codex_local_access";
-const CODEX_LOCAL_ACCESS_RUNTIME_PROVIDER_NAME: &str = "OpenAI";
+/// 托管 profile 写入的 provider 显示名。
+///
+/// 客户端只用它判断压缩能力：`ModelProviderInfo::is_openai()` 要求名字**恰好等于**
+/// `OpenAI` 才把 `remote_compaction` 判定为 V2（走 `/responses/compact`），其它名字一律
+/// 走本地压缩。本地 API 服务的上游可能是 DeepSeek / Chat Completions 等没有服务端压缩
+/// 的实现，所以这里必须保持非 `OpenAI` 的名字，避免远程压缩被错误启用。
+const CODEX_LOCAL_ACCESS_RUNTIME_PROVIDER_NAME: &str = "Codex API Service";
 const CODEX_LOCAL_ACCESS_RUNTIME_ACCOUNT_ID: &str = "codex_local_access_runtime";
 const CODEX_IMAGEGEN_ACTOR_HEADER: &str = "x-openai-actor-authorization";
 const CODEX_LOCAL_ACCESS_DISABLE_HOSTED_IMAGE_GENERATION_HEADER: &str =
@@ -252,6 +421,19 @@ const CODEX_IMAGE_MODEL_ID: &str = "gpt-image-2.5";
 const LEGACY_CODEX_IMAGE_MODEL_ID: &str = "gpt-image-2";
 const CODEX_GPT_RESERVE_MODEL_ID: &str = "gpt-reserve";
 const CODEX_AUTO_REVIEW_MODEL_ID: &str = "codex-auto-review";
+/// API 服务 / 本地网关 profile 向客户端展示的 GPT 系列模型。
+///
+/// 只保留官方客户端推荐集里的这几个模型，显示名与官方客户端保持一致（`GPT-` 前缀、空格分隔）；
+/// 其它历史模型仍然可以路由，只是不再出现在客户端模型选择器里。
+const LOCAL_GATEWAY_VISIBLE_GPT_MODELS: &[(&str, &str)] = &[
+    ("gpt-6-astra", "GPT-6 Astra"),
+    ("gpt-6-sol", "GPT-6 Sol"),
+    ("gpt-6-luna", "GPT-6 Luna"),
+    ("gpt-5.6-sol", "GPT-5.6 Sol"),
+    ("gpt-5.6-terra", "GPT-5.6 Terra"),
+    ("gpt-5.6-luna", "GPT-5.6 Luna"),
+    ("gpt-5.5", "GPT-5.5"),
+];
 const DEFAULT_IMAGES_MAIN_MODEL: &str = "gpt-5.5";
 const MAX_MODEL_PRICE_USD_PER_MILLION: f64 = 1_000_000.0;
 const CODEX_LOCAL_ACCESS_LONG_CONTEXT_THRESHOLD_TOKENS: u64 = 272_000;
@@ -1893,7 +2075,9 @@ fn sidecar_account_needs_background_refresh(account: &CodexAccount) -> bool {
 /// 绑定 OAuth 可能只存在于 API Key 或 collection 的绑定字段中，并不一定
 /// 出现在普通账号池 `account_ids` 里；这些账号仍必须接收重新授权后的新 Token。
 fn sidecar_auth_account_ids(collection: &CodexLocalAccessCollection) -> Vec<String> {
-    let mut scoped_account_ids = effective_sidecar_account_ids(collection);
+    // 宿主内部调度（唤醒、鹈鹕测试）的账号同样会写入 API 服务 sidecar 清单，
+    // 凭据同步与后台刷新范围必须和 sidecar 实际持有的账号保持一致。
+    let mut scoped_account_ids = effective_sidecar_account_ids_with_internal(collection, true);
     let mut seen = scoped_account_ids.iter().cloned().collect::<HashSet<_>>();
 
     // API Key 账号自身不持有 OAuth refresh_token；如果它绑定了 OAuth，
@@ -2039,22 +2223,18 @@ fn trigger_sidecar_account_refresh_in_background(collection: CodexLocalAccessCol
     });
 }
 
-pub struct CodexOfficialWakeupChatResult {
-    pub account: CodexAccount,
-    pub reply: String,
-    pub duration_ms: u64,
-}
-
 struct CodexOfficialWakeupHttpResponse {
     account: CodexAccount,
     status: StatusCode,
     body: String,
 }
 
+/// API 直连唤醒使用的上游代理与超时配置：沿用用户已保存的 API 服务网络设置，
+/// 但只读取配置，不启动、也不依赖 API 服务进程。
 async fn official_wakeup_network_config() -> (Option<String>, CodexLocalAccessTimeouts) {
     if let Err(err) = ensure_runtime_loaded_without_start().await {
         logger::log_warn(&format!(
-            "[CodexWakeup] 加载官方直连网络配置失败，使用默认网络配置: {}",
+            "[CodexWakeup] 加载 API 直连网络配置失败，使用默认网络配置: {}",
             err
         ));
         return (None, CodexLocalAccessTimeouts::default());
@@ -2143,6 +2323,14 @@ async fn send_agent_identity_wakeup_request_with_base_urls(
     Err("Agent Identity task 恢复后官方直连唤醒仍失败".to_string())
 }
 
+pub struct CodexOfficialWakeupChatResult {
+    pub account: CodexAccount,
+    pub reply: String,
+    pub duration_ms: u64,
+}
+
+/// API 直连唤醒：宿主带上所选账号凭据直接请求官方上游，不需要 Codex CLI，
+/// 也不经过本地 API 服务进程。
 pub async fn run_official_wakeup_chat(
     account_id: &str,
     model: Option<&str>,
@@ -2151,13 +2339,13 @@ pub async fn run_official_wakeup_chat(
 ) -> Result<CodexOfficialWakeupChatResult, String> {
     let account = get_prepared_account(account_id).await?;
     if account.is_api_key_auth() {
-        return Err("Codex 官方直连唤醒仅支持 OAuth 账号。".to_string());
+        return Err("Codex API 直连唤醒仅支持 OAuth / Agent Identity 账号。".to_string());
     }
 
     let model = model
         .map(str::trim)
         .filter(|value| !value.is_empty())
-        .unwrap_or("gpt-5.4");
+        .unwrap_or(crate::modules::codex_wakeup::DEFAULT_WAKEUP_MODEL);
     let reasoning_effort = reasoning_effort
         .map(str::trim)
         .filter(|value| !value.is_empty())
@@ -2192,7 +2380,7 @@ pub async fn run_official_wakeup_chat(
         "stream": true,
     });
     let body = serde_json::to_vec(&request_body)
-        .map_err(|e| format!("序列化官方直连唤醒请求失败: {}", e))?;
+        .map_err(|e| format!("序列化 API 直连唤醒请求失败: {}", e))?;
     let mut headers = HashMap::new();
     headers.insert("accept".to_string(), "text/event-stream".to_string());
     headers.insert("content-type".to_string(), "application/json".to_string());
@@ -2223,7 +2411,7 @@ pub async fn run_official_wakeup_chat(
             .filter(|detail| !detail.is_empty())
             .unwrap_or(err.as_str());
         format!(
-            "Codex 官方服务暂时不可用，未能连接到所选账号的官方对话服务。请检查网络和代理配置。技术细节: {}",
+            "Codex API 直连暂时不可用，未能连接到所选账号的官方对话服务。请检查网络和代理配置。技术细节: {}",
             detail
         )
     };
@@ -2241,7 +2429,11 @@ pub async fn run_official_wakeup_chat(
         )
         .await
         .map_err(format_transport_error)?;
-        (response.account, response.status, response.body)
+        (
+            response.account,
+            response.status,
+            response.body,
+        )
     } else {
         let response = send_upstream_request(
             "POST",
@@ -2261,7 +2453,7 @@ pub async fn run_official_wakeup_chat(
         let body_text = response
             .text()
             .await
-            .map_err(|e| format!("读取官方直连唤醒响应失败: {}", e))?;
+            .map_err(|e| format!("读取 API 直连唤醒响应失败: {}", e))?;
         (account, status, body_text)
     };
 
@@ -2269,17 +2461,17 @@ pub async fn run_official_wakeup_chat(
         let message = extract_upstream_error_message(&body_text)
             .unwrap_or_else(|| truncate_diagnostic_text(body_text.trim(), 4000));
         return Err(format!(
-            "官方直连唤醒失败({}): {}",
+            "API 直连唤醒失败({}): {}",
             status.as_u16(),
             message
         ));
     }
 
     let response_body = parse_responses_payload_from_upstream(body_text.as_bytes())
-        .map_err(|e| format!("解析官方直连唤醒响应失败: {}", e))?;
+        .map_err(|e| format!("解析 API 直连唤醒响应失败: {}", e))?;
     let reply = extract_output_text_from_response(&response_body);
     if reply.trim().is_empty() {
-        return Err("官方直连唤醒未返回可读回复。".to_string());
+        return Err("API 直连唤醒未返回可读回复。".to_string());
     }
     if account.is_agent_identity_auth() {
         cache_prepared_account(&account).await;
@@ -2419,8 +2611,45 @@ fn api_service_experimental_model_catalog() -> Option<Vec<String>> {
         .clone()
 }
 
+/// 客户端模型选择器里展示的 GPT 模型 ID（官方推荐集）。
+fn local_gateway_visible_gpt_model_ids() -> Vec<String> {
+    LOCAL_GATEWAY_VISIBLE_GPT_MODELS
+        .iter()
+        .map(|(model_id, _)| model_id.to_string())
+        .collect()
+}
+
+/// 客户端模型目录（profile `model_catalog_json`）里的 GPT 条目：模型 ID + 官方显示名。
+fn local_gateway_visible_gpt_model_definitions() -> Vec<(String, String)> {
+    LOCAL_GATEWAY_VISIBLE_GPT_MODELS
+        .iter()
+        .map(|(model_id, display_name)| (model_id.to_string(), display_name.to_string()))
+        .collect()
+}
+
+/// API 服务对外展示的模型清单：官方推荐 GPT 集 + 客户端内部需要的隐藏模型。
+///
+/// 历史模型（唤醒预设、`gpt-5.4` 等兼容模型）不再出现在展示清单里，但仍可通过
+/// [`api_service_routable_codex_model_ids`] 正常路由，避免旧客户端请求直接失败。
 fn api_service_supported_codex_model_ids() -> Vec<String> {
-    api_service_experimental_model_catalog().unwrap_or_else(supported_codex_model_ids)
+    if let Some(experimental) = api_service_experimental_model_catalog() {
+        return experimental;
+    }
+    let mut model_ids = local_gateway_visible_gpt_model_ids();
+    for internal in [CODEX_IMAGE_MODEL_ID, CODEX_AUTO_REVIEW_MODEL_ID] {
+        if !model_ids
+            .iter()
+            .any(|model| model.eq_ignore_ascii_case(internal))
+        {
+            model_ids.push(internal.to_string());
+        }
+    }
+    model_ids
+}
+
+/// 仍然允许路由、但不展示在客户端模型选择器里的模型（唤醒预设、历史兼容模型等）。
+fn api_service_routable_codex_model_ids() -> Vec<String> {
+    supported_codex_model_ids()
 }
 
 fn apply_codex_image_model_visibility(
@@ -2620,26 +2849,12 @@ fn base_codex_model_ids_for_collection(
     {
         model_ids.push(CODEX_GPT_RESERVE_MODEL_ID.to_string());
     }
-    let mut seen = model_ids
-        .iter()
-        .map(|model| model.to_ascii_lowercase())
-        .collect::<HashSet<_>>();
-    for account_id in &collection.account_ids {
-        let Some(account) = codex_account::load_account(account_id) else {
-            continue;
-        };
-        for mapping in &account.api_model_mappings {
-            for model in [&mapping.client_model, &mapping.upstream_model] {
-                let model = model.trim();
-                if model.is_empty() {
-                    continue;
-                }
-                if seen.insert(model.to_ascii_lowercase()) {
-                    model_ids.push(model.to_string());
-                }
-            }
-        }
-    }
+    let accounts: Vec<_> = collection.account_ids.iter()
+        .filter_map(|id| codex_account::load_account(id))
+        .filter(|account| is_local_access_eligible_account(account, collection.restrict_free_accounts))
+        .collect();
+    model_ids = automatic_api_service_pool_model_ids(&accounts, model_ids);
+
     model_ids
 }
 
@@ -2881,6 +3096,13 @@ fn visible_codex_model_ids_for_api_key_with_supported_models(
             .any(|model| model.eq_ignore_ascii_case(CODEX_GPT_RESERVE_MODEL_ID))
     {
         base.push(CODEX_GPT_RESERVE_MODEL_ID.to_string());
+    }
+    if let Some(accounts) = accounts {
+        let scoped: Vec<_> = accounts.iter()
+            .filter(|account| scoped_account_ids.contains(&account.id))
+            .filter(|account| is_local_access_eligible_account(account, collection.restrict_free_accounts))
+            .cloned().collect();
+        base = automatic_api_service_pool_model_ids(&scoped, base);
     }
     let mut visible = apply_model_filters(
         apply_model_aliases_to_ids(base, &collection.model_aliases),

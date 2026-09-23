@@ -1733,25 +1733,6 @@ export function InstancesManager<TAccount extends AccountLike>({
     return true;
   };
 
-  const handleCodexManagedStoreLaunchError = (error: unknown) => {
-    const message = String(error ?? "").replace(/^Error:\s*/, "");
-    const prefix = "CODEX_MANAGED_STORE_LAUNCH_UNSAFE:";
-    if (appType !== "codex" || !message.startsWith(prefix)) {
-      return false;
-    }
-
-    const detail = message.slice(prefix.length).trim();
-    setMessage({
-      text: t(
-        "instances.messages.codexManagedStoreLaunchUnsafe",
-        "Windows Store 无法可靠传递实例目录，已阻止打开默认账号。请将该实例的启动方式切换为 CLI 后重试。详情：{{detail}}",
-        { detail },
-      ),
-      tone: "error",
-    });
-    return true;
-  };
-
   const triggerDelayedRefreshAfterStart = () => {
     window.setTimeout(() => {
       refreshInstances().catch(() => {
@@ -1837,9 +1818,6 @@ export function InstancesManager<TAccount extends AccountLike>({
         if (handleMissingPathError(e, instance.id)) {
           return "missing-path";
         }
-        if (handleCodexManagedStoreLaunchError(e)) {
-          return "failed";
-        }
         const retryStart = async () => {
           const startedInstance = await startInstance(instance.id);
           await Promise.resolve(onInstanceStarted?.(startedInstance));
@@ -1873,7 +1851,6 @@ export function InstancesManager<TAccount extends AccountLike>({
     },
     [
       handleMissingPathError,
-      handleCodexManagedStoreLaunchError,
       isCodexApp,
       markInstanceStarting,
       onBeforeStart,
@@ -3682,10 +3659,7 @@ export function InstancesManager<TAccount extends AccountLike>({
                               const enabled = event.target.checked;
                               if (enabled) {
                                 void confirmDialog(
-                                  t(
-                                    "codex.modelManagement.enableConfirmDescription",
-                                    "开启后，Codex 将以这里配置的模型目录为准。你可以添加、删除和调整模型，但模型列表不会再自动跟随官方变化。",
-                                  ),
+                                  t("codex.modelManagement.enableConfirmDescription"),
                                   {
                                     title: t(
                                       "codex.modelManagement.enableConfirmTitle",

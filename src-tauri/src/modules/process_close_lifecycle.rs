@@ -1717,6 +1717,30 @@ function Get-ExePathFromCmdLine([string]$cmdline) {{
 }}
 $expected = Normalize-ExePath $expectedRaw
 if ([string]::IsNullOrWhiteSpace($expected)) {{ exit 0 }}
+function Get-WindowsAppsFamily([string]$path) {{
+  if (-not $path) {{ return $null }}
+  $lower = $path.ToLowerInvariant()
+  $marker = '\windowsapps\'
+  $at = $lower.IndexOf($marker)
+  if ($at -lt 0) {{ return $null }}
+  $after = $lower.Substring($at + $marker.Length)
+  $packageDir = ($after -split '\\')[0]
+  $family = ($packageDir -split '_')[0]
+  if ([string]::IsNullOrWhiteSpace($family)) {{ return $null }}
+  return $family
+}}
+function Test-CodexExeMatch([string]$exe, [string]$expected) {{
+  if (-not $exe -or -not $expected) {{ return $false }}
+  if ($exe -eq $expected) {{ return $true }}
+  $exeFamily = Get-WindowsAppsFamily $exe
+  $expectedFamily = Get-WindowsAppsFamily $expected
+  if (-not $exeFamily -or -not $expectedFamily) {{ return $false }}
+  if ($exeFamily -ne $expectedFamily) {{ return $false }}
+  $exeFile = Split-Path -Leaf $exe
+  $expectedFile = Split-Path -Leaf $expected
+  if (-not $exeFile) {{ return $false }}
+  return ($exeFile.ToLowerInvariant() -eq $expectedFile.ToLowerInvariant())
+}}
 Get-CimInstance Win32_Process |
   Where-Object {{
     if (-not ($processNames -contains $_.Name)) {{
@@ -1724,7 +1748,7 @@ Get-CimInstance Win32_Process |
     }} else {{
       $exe = Normalize-ExePath $_.ExecutablePath
       if (-not $exe) {{ $exe = Normalize-ExePath (Get-ExePathFromCmdLine $_.CommandLine) }}
-      $exe -eq $expected
+      Test-CodexExeMatch $exe $expected
     }}
   }} |
   ForEach-Object {{ "$($_.ProcessId)|$($_.ParentProcessId)|$($_.CommandLine)" }}"#
@@ -1797,6 +1821,59 @@ Get-CimInstance Win32_Process |
     entries
 }
 
+/// 把 Windows 路径统一成小写反斜杠形式，便于跨写法比较（`/` 与 `\` 都接受）。
+#[cfg(any(test, target_os = "windows"))]
+fn normalized_windows_exe_text(path: &str) -> String {
+    path.trim().replace('/', "\\").to_ascii_lowercase()
+}
+
+/// 从商店包路径里取出包族名（`\WindowsApps\` 之后、`_版本` 之前的部分）。
+///
+/// `C:\Program Files\WindowsApps\OpenAI.Codex_26.908.4834.0_x64__2p2nqsd0c76g0\app\ChatGPT.exe`
+/// 会得到 `openai.codex`；非商店路径返回 `None`。
+#[cfg(any(test, target_os = "windows"))]
+fn windowsapps_package_family(path: &str) -> Option<String> {
+    let lower = normalized_windows_exe_text(path);
+    let after = lower.split(r"\windowsapps\").nth(1)?;
+    let package_dir = after.split('\\').next()?;
+    let family = package_dir.split('_').next()?.trim();
+    if family.is_empty() {
+        return None;
+    }
+    Some(family.to_string())
+}
+
+/// 判断进程实际可执行路径是否匹配期望的 Codex 启动路径。
+///
+/// 商店版 Codex 更新后会换新的包目录，客户端也可能自行从新目录重启，此时「配置路径」
+/// 与「实际进程路径」只是同一个包的不同版本目录。若仍按全路径严格比对，会出现
+/// 「客户端明明起来了，Cockpit 却说没启动 / 已关闭」的误判（真实 PID 拿不到时会回退到
+/// spawn 出来的壳进程），官方登录流程更会因此直接判定登录失败。
+///
+/// 因此商店包路径额外放宽为：**同一个包族 + 同一个可执行文件名**。非商店路径仍要求完全一致。
+#[cfg(any(test, target_os = "windows"))]
+fn is_matching_codex_windows_exe(actual: &str, expected: &str) -> bool {
+    if actual.is_empty() || expected.is_empty() {
+        return false;
+    }
+    let actual = normalized_windows_exe_text(actual);
+    let expected = normalized_windows_exe_text(expected);
+    if actual == expected {
+        return true;
+    }
+    let actual_family = windowsapps_package_family(&actual);
+    let expected_family = windowsapps_package_family(&expected);
+    let (Some(actual_family), Some(expected_family)) = (actual_family, expected_family) else {
+        return false;
+    };
+    if actual_family != expected_family {
+        return false;
+    }
+    let actual_file = actual.rsplit('\\').next().unwrap_or(actual.as_str());
+    let expected_file = expected.rsplit('\\').next().unwrap_or(expected.as_str());
+    !actual_file.is_empty() && actual_file == expected_file
+}
+
 #[cfg(target_os = "windows")]
 fn collect_codex_process_entries_from_sysinfo_fallback(
     expected_exe_path: &str,
@@ -1838,7 +1915,8 @@ fn collect_codex_process_entries_from_sysinfo_fallback(
             continue;
         }
         let (resolved_exe, _) = resolve_windows_process_exe_for_match(process);
-        if resolved_exe.as_deref() != Some(expected.as_str()) {
+        let resolved_exe = resolved_exe.unwrap_or_default();
+        if !is_matching_codex_windows_exe(&resolved_exe, &expected) {
             continue;
         }
 
@@ -1900,7 +1978,8 @@ fn collect_codex_main_process_pids_from_sysinfo_fast(expected_exe_path: &str) ->
             continue;
         }
         let (resolved_exe, _) = resolve_windows_process_exe_for_match(process);
-        if resolved_exe.as_deref() != Some(expected.as_str()) {
+        let resolved_exe = resolved_exe.unwrap_or_default();
+        if !is_matching_codex_windows_exe(&resolved_exe, &expected) {
             continue;
         }
 
@@ -2089,6 +2168,18 @@ pub fn is_codex_running() -> bool {
 
 /// 启动 Codex 桌面实例（支持独立 CODEX_HOME、Electron user-data 与附加参数）。
 pub fn start_codex_with_args(codex_home: &str, extra_args: &[String]) -> Result<u32, String> {
+    start_codex_with_args_and_env(codex_home, extra_args, &[])
+}
+
+/// 启动 Codex 桌面实例，并在 `CODEX_HOME` / Electron user-data 之外附加环境变量。
+///
+/// `extra_env` 用于官方客户端临时登录时的主进程注入（`NODE_OPTIONS=--require=<hook>`），
+/// 让官方实例把授权跳转交给我们展示而不是打开浏览器；其余调用方传空数组即可。
+pub fn start_codex_with_args_and_env(
+    codex_home: &str,
+    extra_args: &[String],
+    extra_env: &[(String, String)],
+) -> Result<u32, String> {
     #[cfg(target_os = "macos")]
     {
         let app_root = resolve_codex_launch_path()
@@ -2121,14 +2212,23 @@ pub fn start_codex_with_args(codex_home: &str, extra_args: &[String]) -> Result<
                 let app_user_data_dir_string = app_user_data_dir.to_string_lossy().to_string();
                 let mut launch_args = args.clone();
                 launch_args.push(format!("--user-data-dir={}", app_user_data_dir_string));
+                let mut env_pairs: Vec<(String, String)> = vec![
+                    ("CODEX_HOME".to_string(), codex_home_trimmed.to_string()),
+                    (
+                        "CODEX_ELECTRON_USER_DATA_PATH".to_string(),
+                        app_user_data_dir_string.clone(),
+                    ),
+                ];
+                env_pairs.extend(extra_env.iter().cloned());
+                let env_refs: Vec<(&str, &str)> = env_pairs
+                    .iter()
+                    .map(|(key, value)| (key.as_str(), value.as_str()))
+                    .collect();
                 let open_pid = spawn_open_app_with_options_and_env(
                     &app_root,
                     &launch_args,
                     true,
-                    &[
-                        ("CODEX_HOME", codex_home_trimmed),
-                        ("CODEX_ELECTRON_USER_DATA_PATH", &app_user_data_dir_string),
-                    ],
+                    &env_refs,
                 )
                 .map_err(|e| format!("启动 Codex 失败: {}", e))?;
                 crate::modules::logger::log_info(&format!(
@@ -2176,14 +2276,12 @@ pub fn start_codex_with_args(codex_home: &str, extra_args: &[String]) -> Result<
 
     #[cfg(target_os = "windows")]
     {
-        use std::os::windows::process::CommandExt;
-
         let codex_home_trimmed = codex_home.trim();
         if codex_home_trimmed.is_empty() {
             return Err("实例目录为空，无法启动".to_string());
         }
 
-        let launch_path = resolve_codex_launch_path()?;
+        let resolved_launch_path = resolve_codex_launch_path()?;
         let app_user_data_dir = crate::modules::codex_instance::get_windows_app_user_data_dir(
             Path::new(codex_home_trimmed),
         )?;
@@ -2195,43 +2293,41 @@ pub fn start_codex_with_args(codex_home: &str, extra_args: &[String]) -> Result<
             )
         })?;
 
-        let mut cmd = Command::new(&launch_path);
-        apply_managed_proxy_env_to_command(&mut cmd);
-        cmd.env("CODEX_HOME", codex_home_trimmed);
-        cmd.env("CODEX_ELECTRON_USER_DATA_PATH", &app_user_data_dir);
-        if should_detach_child() {
-            cmd.creation_flags(CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS);
-            cmd.stdin(Stdio::null())
-                .stdout(Stdio::null())
-                .stderr(Stdio::null());
-        }
-        let args = build_codex_app_launch_args(extra_args);
-        for arg in &args {
-            cmd.arg(arg);
-        }
-        cmd.arg(format!(
-            "--user-data-dir={}",
-            app_user_data_dir.to_string_lossy()
-        ));
+        // 启动路径可能在自动修复后与初始配置不同（商店包更新会换目录），
+        // 后续日志、PowerShell 兜底与诊断信息都使用实际尝试的路径。
+        let (launch_path, spawn_result) = launch_windows_codex_instance(
+            &resolved_launch_path,
+            codex_home_trimmed,
+            &app_user_data_dir,
+            extra_args,
+            extra_env,
+        );
 
-        let child = match spawn_command_with_trace(&mut cmd) {
+        // 受管实例是通过「包身份」拉起的时为 true：此时没有可用的 spawn 句柄，
+        // 只能靠 CODEX_HOME / user-data 目录匹配真实 PID。
+        let mut launched_via_package_identity = false;
+        let child = match spawn_result {
             Ok(child) => Some(child),
             Err(err) => {
                 let launch_path_text = launch_path.to_string_lossy().to_ascii_lowercase();
-                if err.kind() == std::io::ErrorKind::PermissionDenied
-                    && launch_path_text.contains("\\windowsapps\\")
-                {
+                let retryable = matches!(
+                    err.kind(),
+                    std::io::ErrorKind::PermissionDenied | std::io::ErrorKind::NotFound
+                );
+                if retryable && launch_path_text.contains("\\windowsapps\\") {
                     let mut fallback_args = build_codex_app_launch_args(extra_args);
                     fallback_args.push(format!(
                         "--user-data-dir={}",
                         app_user_data_dir.to_string_lossy()
                     ));
-                    match launch_codex_via_powershell_exec_path(
+                    let powershell_result = launch_codex_via_powershell_exec_path(
                         &launch_path,
                         codex_home_trimmed,
                         &app_user_data_dir,
                         &fallback_args,
-                    ) {
+                        extra_env,
+                    );
+                    match powershell_result {
                         Ok(()) => {
                             crate::modules::logger::log_warn(&format!(
                                 "[Codex Start] WindowsApps direct launch denied, PowerShell exec fallback succeeded: launch_path={} error={}",
@@ -2240,16 +2336,47 @@ pub fn start_codex_with_args(codex_home: &str, extra_args: &[String]) -> Result<
                             ));
                         }
                         Err(ps_err) => {
-                            crate::modules::logger::log_warn(&format!(
-                                "[Codex Start] WindowsApps direct launch denied and PowerShell exec fallback failed; managed Store activation blocked to avoid losing CODEX_HOME: launch_path={} error={} powershell_error={}",
-                                launch_path.to_string_lossy(),
-                                err,
-                                ps_err
-                            ));
-                            return Err(codex_managed_store_launch_unsafe_error(
-                                &err.to_string(),
-                                &ps_err,
-                            ));
+                            // 直启与 Start-Process 都走 ShellExecute/CreateProcess 的同一条
+                            // 包外路径，在当前的 Windows 上必然同时被拒。改用包身份激活，
+                            // 既绕开这层限制，又能把 CODEX_HOME 与注入环境带进官方进程。
+                            match launch_codex_via_package_identity(
+                                &launch_path,
+                                codex_home_trimmed,
+                                &app_user_data_dir,
+                                &fallback_args,
+                                extra_env,
+                            ) {
+                                Ok(()) => {
+                                    launched_via_package_identity = true;
+                                    crate::modules::logger::log_warn(&format!(
+                                        "[Codex Start] WindowsApps direct launch denied, package-identity launch succeeded: launch_path={} error={} powershell_error={}",
+                                        launch_path.to_string_lossy(),
+                                        err,
+                                        ps_err
+                                    ));
+                                }
+                                Err(package_err) => {
+                                    crate::modules::logger::log_warn(&format!(
+                                        "[Codex Start] WindowsApps direct launch denied and every fallback failed; managed Store activation blocked to avoid losing CODEX_HOME: launch_path={} error={} powershell_error={} package_identity_error={}",
+                                        launch_path.to_string_lossy(),
+                                        err,
+                                        ps_err,
+                                        package_err
+                                    ));
+                                    return Err(codex_managed_store_launch_unsafe_error(
+                                        &err.to_string(),
+                                        &ps_err,
+                                        &format!(
+                                            "package_identity_error={}; {}",
+                                            package_err,
+                                            codex_managed_store_launch_diagnostics(
+                                                &launch_path,
+                                                codex_home_trimmed,
+                                            )
+                                        ),
+                                    ));
+                                }
+                            }
                         }
                     }
                     None
@@ -2263,7 +2390,13 @@ pub fn start_codex_with_args(codex_home: &str, extra_args: &[String]) -> Result<
             launch_path.to_string_lossy(),
             summarize_text_for_process_log(codex_home_trimmed, 96),
             app_user_data_dir.to_string_lossy(),
-            child.as_ref().map(|item| item.id().to_string()).unwrap_or_else(|| "powershell-exec".to_string())
+            child.as_ref().map(|item| item.id().to_string()).unwrap_or_else(|| {
+                if launched_via_package_identity {
+                    "package-identity".to_string()
+                } else {
+                    "powershell-exec".to_string()
+                }
+            })
         ));
 
         let probe_started = Instant::now();
@@ -2283,10 +2416,15 @@ pub fn start_codex_with_args(codex_home: &str, extra_args: &[String]) -> Result<
         } else {
             let error = codex_managed_store_launch_unsafe_error(
                 "WindowsApps direct launch denied",
-                "PowerShell exec returned success but no managed instance matched within 15s",
+                if launched_via_package_identity {
+                    "Package-identity launch returned success but no managed instance matched within 15s"
+                } else {
+                    "PowerShell exec returned success but no managed instance matched within 15s"
+                },
+                &codex_managed_store_launch_diagnostics(&launch_path, codex_home_trimmed),
             );
             crate::modules::logger::log_warn(&format!(
-                "[Codex Start] PowerShell exec did not produce a matching managed instance; default PID fallback blocked: codex_home={}",
+                "[Codex Start] fallback launch did not produce a matching managed instance; default PID fallback blocked: codex_home={}",
                 summarize_text_for_process_log(codex_home_trimmed, 96)
             ));
             Err(error)
@@ -2318,6 +2456,9 @@ pub fn start_codex_with_args(codex_home: &str, extra_args: &[String]) -> Result<
             .env("CODEX_HOME", codex_home_trimmed)
             .env("CODEX_ELECTRON_USER_DATA_PATH", &app_user_data_dir)
             .arg(format!("--user-data-dir={}", app_user_data_dir.display()));
+        for (key, value) in extra_env {
+            command.env(key, value);
+        }
         for arg in build_codex_app_launch_args(extra_args) {
             command.arg(arg);
         }
@@ -2357,7 +2498,94 @@ pub fn start_codex_with_args(codex_home: &str, extra_args: &[String]) -> Result<
 
     #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
     {
-        let _ = (codex_home, extra_args);
+        let _ = (codex_home, extra_args, extra_env);
         Err("当前系统不支持 Codex 应用多开".to_string())
+    }
+}
+
+/// 组装 Windows 下直启 Codex 实例的命令（独立 CODEX_HOME + Electron user-data-dir）。
+#[cfg(target_os = "windows")]
+fn build_windows_codex_instance_command(
+    launch_path: &Path,
+    codex_home: &str,
+    app_user_data_dir: &Path,
+    extra_args: &[String],
+    extra_env: &[(String, String)],
+) -> Command {
+    use std::os::windows::process::CommandExt;
+
+    let mut cmd = Command::new(launch_path);
+    apply_managed_proxy_env_to_command(&mut cmd);
+    cmd.env("CODEX_HOME", codex_home);
+    cmd.env("CODEX_ELECTRON_USER_DATA_PATH", app_user_data_dir);
+    for (key, value) in extra_env {
+        cmd.env(key, value);
+    }
+    if should_detach_child() {
+        cmd.creation_flags(CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS);
+        cmd.stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+    }
+    for arg in build_codex_app_launch_args(extra_args) {
+        cmd.arg(arg);
+    }
+    cmd.arg(format!(
+        "--user-data-dir={}",
+        app_user_data_dir.to_string_lossy()
+    ));
+    cmd
+}
+
+/// 直启 Windows 受管 Codex 实例，并在商店包目录失效时自愈一次。
+///
+/// 商店版 Codex 更新后会换新的包目录，旧目录可能仍然存在但不允许执行：直启固定报
+/// `os error 5`，而配置里的路径不会被「路径不存在」的探测覆盖。这种情况下按当前注册
+/// 的包重新解析一次路径、写回配置并重试，用户不必手动「重置路径」。
+///
+/// 返回实际尝试的启动路径与结果（自动修复后路径可能与传入值不同）。
+#[cfg(target_os = "windows")]
+fn launch_windows_codex_instance(
+    launch_path: &Path,
+    codex_home: &str,
+    app_user_data_dir: &Path,
+    extra_args: &[String],
+    extra_env: &[(String, String)],
+) -> (std::path::PathBuf, std::io::Result<std::process::Child>) {
+    let spawn = |path: &Path| {
+        spawn_command_with_trace(&mut build_windows_codex_instance_command(
+            path,
+            codex_home,
+            app_user_data_dir,
+            extra_args,
+            extra_env,
+        ))
+    };
+
+    match spawn(launch_path) {
+        Ok(child) => return (launch_path.to_path_buf(), Ok(child)),
+        Err(error) => {
+            // 商店包更新后旧版本目录会被删除或失去执行权限：NotFound / PermissionDenied
+            // 都应该重新解析「当前注册的包」再重试一次。
+            let retryable = matches!(
+                error.kind(),
+                std::io::ErrorKind::PermissionDenied | std::io::ErrorKind::NotFound
+            );
+            if !retryable || !is_windowsapps_launch_path(launch_path) {
+                return (launch_path.to_path_buf(), Err(error));
+            }
+            let Some(refreshed) = refresh_registered_codex_store_launch_path(launch_path) else {
+                return (launch_path.to_path_buf(), Err(error));
+            };
+            crate::modules::logger::log_warn(&format!(
+                "[Codex Start] WindowsApps 直启被拒绝，改用当前注册的商店包重试: stale={} registered={} error={}",
+                launch_path.to_string_lossy(),
+                refreshed.to_string_lossy(),
+                error
+            ));
+            update_app_path_in_config("codex", &refreshed, &launch_path.to_string_lossy());
+            let retry = spawn(&refreshed);
+            (refreshed, retry)
+        }
     }
 }

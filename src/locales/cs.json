@@ -86,6 +86,7 @@
     "viewError": "Zobrazit chybu"
   },
   "common": {
+    "retry": "Zkusit znovu",
     "quotaRefreshScheduler": {
       "busy": "Fronta aktualizací je plná. Zkuste to za chvíli.",
       "timeout": "Vypršel čas pro aktualizaci kvóty. Zkuste to znovu.",
@@ -123,6 +124,8 @@
     "windowsOperation": {
       "title": "Operace Windows nebyla dokončena",
       "accessDeniedDescription": "Windows tuto operaci zamítl. Cílový program může běžet s vyšším oprávněním nebo být v chráněném umístění.",
+      "storeLaunchBlockedDescription": "Windows nemohl spustit nakonfigurovaného klienta Codex: složka z Store mohla být nahrazena aktualizací nebo už neumožňuje spuštění. Přímé spuštění bylo zablokováno, aby se neotevřel nesprávný účet. Použijte „Znovu zjistit cestu a zkusit to“; pokud to selže, přepněte tuto instanci na režim CLI.",
+      "repairPath": "Znovu zjistit cestu a zkusit to",
       "fileInUseDescription": "Cílový soubor používá jiný program. Zavřete jej a zkuste to znovu.",
       "programNotFoundDescription": "Windows nenašel program potřebný pro tuto operaci. Zkontrolujte instalaci nebo nastavenou cestu.",
       "portDeniedDescription": "Windows zablokoval přístup k portu. Může jej používat systémová zásada nebo jiný program.",
@@ -362,7 +365,11 @@
     "deleteTagWarning": "Opravdu chcete odstranit tento štítek ze všech účtů?",
     "expand": "Rozbalit",
     "processing": "Zpracovávám...",
-    "selectAll": "Vybrat vše"
+    "selectAll": "Vybrat vše",
+    "quota": {
+      "weeklyWindow": "Týden"
+    },
+    "optional": " (volitelné)"
   },
   "nav": {
     "overview": "Antigravity IDE​",
@@ -610,7 +617,7 @@
         "summary": "Modely bez předpony používají aktuální předplatné; modely s předponou jako cpa/gpt-5.5 jsou předávány do API třetích stran. Obojí závisí na místní službě směrování.",
         "rowSummary": "Modely bez předpony používají aktuální předplatné; modely s předponou jako cpa/gpt-5.5 jsou předávány do API třetích stran. Obojí závisí na místní službě směrování.",
         "confirmEnableTitle": "Povolit směrování API třetích stran?",
-        "confirmEnableMessage": "Požadavky na modely Codex budou směrovány přes místní službu Cockpit Tools. Pokud služba neběží, modely předplatného i modely třetích stran mohou být nedostupné. Spuštění při přihlášení bude povoleno při uložení.\n\nPovolit směrování?",
+        "confirmEnableMessage": "Požadavky na modely Codex budou směrovány přes místní službu Cockpit Tools. Pokud služba neběží, modely předplatného i modely třetích stran mohou být nedostupné.\n\nPovolit směrování?",
         "confirmEnableAction": "Povolit",
         "confirmDisableTitle": "Zakázat směrování API třetích stran?",
         "confirmDisableMessage": "Jakmile tato změna vstoupí v platnost, místní brána se zastaví, obnoví se přímý přístup k oficiálnímu předplatnému a modely třetích stran nebudou k dispozici.\n\nZakázat směrování?",
@@ -837,10 +844,11 @@
       "codexSyncWsl": "Synchronizovat Codex do WSL",
       "codexSyncWslDesc": "Po přepnutí výchozího účtu Codex se auth.json a config.toml zapíší také do adresáře Codex ve WSL.",
       "codexAppUiInjection": "Kvóta API služby",
-      "codexAppUiInjectionDesc": "Po restartování instance Codex zobrazí pod kompozitorem počet účtů API služby Cockpit Tools a kvóty za týden a 5 hodin; instance s připojeným účtem DeepSeek místo toho zobrazují zůstatek tohoto účtu. Cockpit Tools musí běžet na pozadí; po úplném ukončení nebo bez sítě se údaje neobnovují.",
+      "codexAppUiInjectionDesc": "Po restartování instance Codex sleduje odznak kvóty pod kompozitorem zvolený model: DeepSeek zobrazuje zůstatek účtu, Grok svou kvótu a modely GPT týdenní a 5hodinovou kvótu. Cockpit Tools musí běžet na pozadí; po úplném ukončení nebo bez sítě se údaje neobnovují.",
       "codexAppUiInjectionPoolLabel": "Účty",
       "codexAppUiInjectionWeeklyLabel": "Týden",
       "codexAppUiInjectionFiveHourLabel": "5 h",
+      "codexAppUiInjectionMissingLabel": "—",
       "codexWslConfigDir": "Adresář Codex ve WSL",
       "codexWslConfigDirDesc": "Zadejte adresář .codex ve WSL. Cesty \\\\wsl.localhost\\ jsou podporované.",
       "codexWslConfigDirPlaceholder": "Příklad: \\\\wsl.localhost\\Ubuntu-24.04\\home\\user\\.codex",
@@ -2189,10 +2197,18 @@
     "refreshAllSuccess": "Obnovení dokončeno, úspěšných účtů: {{count}}",
     "refreshAllPartialFailed": "Obnovení dokončeno, {{success}} / {{total}} účtů úspěšných, některé selhaly",
     "launchPreview": {
+      "configLoading": "Načítání nastavení instance…",
+      "configRefreshing": "Kontrola nastavení instance. Stávající údaje zůstávají dostupné.",
+      "configLoadTimeout": "Načítání nastavení instance překročilo časový limit. Zkuste to znovu.",
+      "configChanged": "Nastavení instance bylo změněno jinde. Před uložením nebo spuštěním je načtěte znovu.",
       "accessModeTitle": "Režim spuštění",
       "prosLabel": "Výhody:",
       "consLabel": "Nevýhody:",
-      "accessModeDescription": "Zvolte, jak se DeepSeek spouští; režimy se liší v přepínání modelů, OAuth a přeposílání obrázků.",
+      "accessModeDescription": "Zvolte, jak se tento poskytovatel spouští; režimy se liší přepínáním modelů, OAuth a předáváním generování obrázků.",
+      "accessModeApiServiceFixed": "Služba API vždy používá režim brány; nelze změnit.",
+      "imageGenApiServiceFixed": "Předávání generování obrázků ve službě API se spravuje v „Služba API → Nastavení“; zde se zobrazuje jen aktuální stav.",
+      "oauthBindingApiServiceHint": "Propojení OAuth ve službě API se spravuje v „Služba API → Nastavení“; zde se zobrazuje jen stav vstupu.",
+      "oauthBindingApiServiceManaged": "Spravuje fond účtů služby API",
       "accessModeGatewayPros": "1: Přepínání modelů v Codexu\n2: Propojení OAuth účtů a funkce OAuth, jako je vzdálená komprese a ovládání prohlížeče\n3: Nastavení GPT účtů pro přeposílání generování obrázků",
       "accessModeGatewayCons": "1: Vyžaduje lokální bránu instance, takže je o něco pomalejší než přímé",
       "accessModeDirectPros": "1: Bez brány, nejrychlejší",
@@ -2355,6 +2371,7 @@
       "apiKey": "Klíč",
       "statusRunning": "Běží",
       "statusStopped": "Zastaveno",
+      "internalSchedulerLabel": "Interní plánovač",
       "statusDisabled": "Vypnuto",
       "emptyMembers": "Ve skupině zatím nejsou žádné účty",
       "footerHint": "Rozsah přístupu: {{scope}}",
@@ -2385,8 +2402,6 @@
         "restrictFreeToggle": "Omezit Free účty",
         "sessionAffinityConfirmTitle": "Zapnout afinitu relace?",
         "sessionAffinityDescription": "Po zapnutí se stejná konverzace pokusí nadále používat stejný účet. Když účet není dostupný, směrování může přepnout na jiný; po vypršení se účet vybere znovu.",
-        "chatApiKeyUnsupported": "Chat Completions není podporováno",
-        "deepseekUnsupported": "DeepSeek zatím ne",
         "pendingOauthUnsupported": "Čekající vyloučeno",
         "freeNoticeRestricted": "Free účty jsou omezené. Vypněte tuto volbu, chcete-li je vybrat.",
         "freeNoticeUnstable": "Proxy pro Free účty může být nestabilní. Používejte opatrně.",
@@ -2438,6 +2453,9 @@
       "summaryMeta": "{{count}} účtů · {{scope}}",
       "summaryMetaUnconfigured": "Nenastaveno · {{scope}}",
       "memberTitle": "Členové kolekce",
+      "memberPlatformLabel": "Platforma",
+      "memberPlatformAll": "Všechny platformy",
+      "memberPlatformGrok": "Účty platformy Grok",
       "imagePolicy": {
         "label": "Zásady obrázků",
         "inherit": "Obrázky: automaticky",
@@ -2622,6 +2640,8 @@
       "requestLogSuccess": "Úspěch",
       "requestLogFailed": "Selhalo",
       "requestLogTokens": "{{value}} tokenů",
+      "imageForwardLabel": "Zapnout generování obrázků GPT",
+      "imageForwardHint": "Po zapnutí vyberte účty GPT: požadavky na generování a úpravu obrázků běží na vybraných účtech a spotřebovávají jejich kvótu, zatímco chat dál využívá fond účtů.",
       "imageGenerationMode": {
         "enabled": "Zapnuto",
         "imagesOnly": "Jen obrázky",
@@ -2691,7 +2711,8 @@
           "recover": "Obnovit",
           "recovering": "Obnovování…",
           "recoverAll": "Obnovit vše",
-          "resyncPool": "Znovu synchronizovat fond"
+          "resyncPool": "Znovu synchronizovat fond",
+          "reauthorizeHint": "Přihlašovací údaje účtu už nejsou platné. Přihlaste se znovu přes oficiální přihlášení; pouhé resetování plánovače to nevyřeší."
         }
       },
       "testChatModel": "Model ID",
@@ -2710,8 +2731,41 @@
       "desc": "Importovat aktuální účet z ~/.codex/auth.json",
       "import": "Načíst lokální účet"
     },
+    "tempLogin": {
+      "tab": "Oficiální přihlášení",
+      "desc": "Přihlášení probíhá zcela v oficiálním desktopovém klientu: adresu autorizace vytváří oficiální klient a zpětné volání autorizace i výměnu tokenu zajišťuje také oficiální klient. Cockpit se zpětného volání autorizace neúčastní, pouze po uložení přihlašovacích údajů oficiálním klientem je načte a importuje.",
+      "note": "Dočasný profil je prázdná složka v datovém adresáři aplikace. Po načtení účtu se odstraní společně s běhovým adresářem klienta a záznamem v klíčence; výchozí instance ani vícenásobné instance nejsou dotčeny.",
+      "start": "Otevřít oficiálního klienta a přihlásit se",
+      "cancel": "Zrušit přihlášení",
+      "cancelling": "Rušení oficiálního přihlášení…",
+      "waitingHint": "Dokončete přihlášení v oficiálním klientu. Jakmile budou údaje rozpoznány, klient se sám zavře (nejvýše 10 minut).",
+      "cancelled": "Oficiální přihlášení zrušeno a dočasný profil odstraněn.",
+      "failed": "Oficiální přihlášení selhalo: {{error}}",
+      "success": "Účet získán: {{email}}",
+      "intercept": {
+        "toggle": "Zachytit otevírání prohlížeče a zobrazit adresu autorizace zde",
+        "hint": "Je-li zapnuto, kliknutí na „Pokračovat“ v oficiálním klientu už neotevře prohlížeč, ale pouze zde zobrazí adresu autorizace vytvořenou oficiálním klientem ke zkopírování. Po přihlášení z libovolného prohlížeče nadále zpětné volání autorizace a výměnu tokenu zajišťuje oficiální desktopový klient; Cockpit se autorizace neúčastní. Je-li vypnuto, oficiální postup se nemění."
+      },
+      "authUrl": {
+        "label": "Adresa URL pro autorizaci (vytváří oficiální klient)",
+        "open": "Otevřít ve výchozím prohlížeči",
+        "openFailed": "Adresu pro autorizaci se nepodařilo otevřít: {{error}}",
+        "hint": "Adresu vytváří oficiální klient a funguje jen v prohlížeči na tomto počítači. Nechte oficiální okno otevřené, dokud přihlášení neskončí.",
+        "unavailable": "Cockpit tentokrát adresu pro autorizaci nezachytil. Oficiální klient otevře prohlížeč jako obvykle, přihlaste se tam."
+      },
+      "phase": {
+        "prepare": "Připravit dočasný profil",
+        "launch": "Otevřít oficiálního klienta",
+        "wait": "Čekat na přihlášení",
+        "import": "Načíst přihlašovací údaje",
+        "close": "Zavřít oficiálního klienta",
+        "clean": "Odstranit dočasný profil"
+      }
+    },
     "import": {
       "localDesc": "Importovat účty Codex z místně přihlášených relací.",
+      "localInstanceTitle": "Vybrat instanci",
+      "localInstanceDesc": "Bylo nalezeno několik instancí Codex. Vyberte instanci, ze které se má místní účet importovat:",
       "importing": "Import lokálního účtu...",
       "successMsg": "Import proběhl úspěšně: {{email}}"
     },
@@ -2752,6 +2806,7 @@
       "resetCreditGrantedAt": "Přiděleno",
       "resetCreditExpiresAt": "Vyprší",
       "windowAccountCostHint": "Účtování účtu (odhad z cen modelu)",
+      "windowEstimatedFullCostHint": "Přepočteno ze současného využití: náklady účtu při plném využití okna",
       "windowUserCostHint": "Účtování uživatele",
       "windowWeeks": "Kvóta {{count}} týd.",
       "windowDays": "Kvóta {{count}} d",
@@ -2846,7 +2901,7 @@
       "heroSubtitle": "Vytvářejte časované úlohy probuzení pro OAuth účty Codex, spouštějte jednorázové testy a sledujte všechna spuštění na jednom místě.",
       "runtimeReady": "Codex CLI je připraveno",
       "runtimeMissing": "Codex CLI je vyžadováno",
-      "runtimeCardTitle": "CLI Codexu",
+      "runtimeCardTitle": "Způsob spuštění",
       "runtimeUnknownPath": "Cesta nebyla nalezena",
       "runtimeUnchecked": "Znovu zkontrolujte pro načtení aktuálního stavu",
       "runtimeVersion": "Verze {{version}}",
@@ -3025,11 +3080,7 @@
       "runtimeConfigCodexCliPlaceholder": "např. /opt/homebrew/bin/codex",
       "runtimeConfigNodeLabel": "Cesta k node",
       "runtimeConfigNodePlaceholder": "např. /opt/homebrew/bin/node",
-      "runtimeConfigApplyHint": "Po úpravě klikněte na „Znovu zkontrolovat CLI“ a změny se ihned uloží i použijí.",
-      "officialChatRuntimeTitle": "Přímé oficiální",
-      "officialChatRuntimePath": "Oficiální chat Codex v ChatGPT",
-      "officialChatRuntimeSource": "Přímé oficiální",
-      "officialChatRuntimeMessage": "Přímý chat účtem OAuth"
+      "runtimeConfigApplyHint": "Po úpravě klikněte na „Znovu zkontrolovat CLI“ a změny se ihned uloží i použijí."
     },
     "sessionManager": {
       "title": "Správce relací",
@@ -3483,6 +3534,9 @@
         }
       }
     },
+    "grokAdd": {
+      "tab": "Účet Grok"
+    },
     "deepSeek": {
       "start": {
         "title": "Spustit DeepSeek",
@@ -3518,6 +3572,13 @@
       }
     },
     "modelProviders": {
+      "keyModels": {
+        "title": "Modely klíče",
+        "override": "Vlastní nastavení",
+        "help": "Při vypnutí se přebírá nastavení modelů poskytovatele. Při zapnutí používá pouze tento klíč vlastní katalog a schopnosti.",
+        "saved": "Nastavení modelů klíče bylo uloženo. Pro použití změn restartujte spuštěné klienty.",
+        "inherit": "Dle poskytovatele"
+      },
       "tab": "Poskytovatelé modelů",
       "desc": "Spravujte poskytovatele modelů a více API klíčů na jednom místě a pak je přímo znovu používejte při přidávání účtů Codex s API klíčem.",
       "add": "Přidat poskytovatele",
@@ -3526,6 +3587,7 @@
       "emptyTitle": "Zatím žádní poskytovatelé modelů",
       "emptyDesc": "Začněte kliknutím na „Přidat poskytovatele“ vpravo nahoře.",
       "baseUrl": "Základní URL",
+      "customEndpointHint": "Používá se vlastní koncový bod: tato adresa není oficiální koncový bod „{{preset}}“. Bude zpracována jako kompatibilní koncový bod třetí strany; protokol a katalog modelů nastavte podle upstreamu.",
       "modelCatalog": "Modely",
       "modelCatalogEmpty": "Žádný katalog modelů",
       "gatewayHint": "Poskytovatelé třetích stran se spouštějí přes místní bránu kvůli izolaci instance a převodu protokolu. Oficiální poskytovatelé OpenAI zůstávají přímí.",
@@ -3536,6 +3598,8 @@
       "unnamedKey": "Nepojmenovaný klíč",
       "createTitle": "Přidat poskytovatele modelu",
       "editTitle": "Upravit poskytovatele modelu",
+      "copySuffix": "Kopie",
+      "duplicate": "Duplikovat poskytovatele (nová kopie bez klíče)",
       "existingApiKeys": "Stávající API klíče",
       "fields": {
         "name": "Název poskytovatele",
@@ -3584,7 +3648,8 @@
         "responses": "Nativní Responses",
         "chatCompletions": "Protokol Chat Completions",
         "deepseekResponsesHint": "Spusťte DeepSeek a zvolte bránu nebo oficiální přímé připojení, poté vyberte Flash nebo Pro. Brána zobrazuje modely v Codex; přímé připojení bránu přeskočí.",
-        "deepseekChatHint": "DeepSeek Chat Completions používá pro staré cesty místní most brány. Zvolte Responses, pokud potřebujete oficiální chování nástrojů Codex."
+        "deepseekChatHint": "DeepSeek Chat Completions používá pro staré cesty místní most brány. Zvolte Responses, pokud potřebujete oficiální chování nástrojů Codex.",
+        "deepseekThirdPartyHint": "Tato adresa není oficiální koncový bod DeepSeek, proto bude zpracována jako kompatibilní koncový bod třetí strany; do katalogu modelů zadejte skutečné identifikátory modelů z upstreamu, nikoli oficiální názvy."
       },
       "selectSavedProvider": "Uložení poskytovatelé",
       "selectSavedApiKey": "Uložené API klíče",
@@ -3806,7 +3871,17 @@
       "renameApiKeyPrompt": "Přejmenovat API key",
       "renameApiKeySuccess": "API key přejmenován",
       "renameApiKeyFailed": "Přejmenování API key selhalo: {{error}}",
-      "existingApiKeysSearch": "Hledat API Key…"
+      "existingApiKeysSearch": "Hledat API Key…",
+      "copyConfig": "Kopírovat konfiguraci (bez klíče)",
+      "copyConfigSuccess": "Konfigurace poskytovatele zkopírována bez API klíče; vložte ji při přidávání poskytovatele.",
+      "copyConfigFailed": "Kopírování konfigurace se nezdařilo: {{error}}",
+      "importConfig": "Importovat konfiguraci ze schránky",
+      "importConfigSuccess": "Konfigurace importována ze schránky; zadejte API klíč a uložte.",
+      "importConfigInvalid": "Ve schránce není konfigurace (použijte „Kopírovat konfiguraci“ na kartě).",
+      "importConfigFailed": "Import ze schránky se nezdařil: {{error}}",
+      "importConfigPlaceholder": "Použijte „Kopírovat konfiguraci“ na kartě a vložte obsah sem",
+      "importConfigAction": "Importovat konfiguraci",
+      "importConfigFromClipboard": "Číst schránku"
     },
     "quickSwitch": {
       "action": "Rychle přepnout poskytovatele",
@@ -3987,8 +4062,6 @@
       "standardDesc": "Výchozí rychlost, běžné využití",
       "fast": "Rychlá",
       "fastDesc": "Rychlost 1,5x, vyšší využití",
-      "ultrafast": "Ultra rychlá",
-      "ultrafastDesc": "Nejrychlejší odpovědi, vyšší využití",
       "saveSuccess": "Rychlost aktualizována",
       "saveFailed": "Rychlost se nepodařilo uložit: {{error}}"
     },
@@ -4168,7 +4241,8 @@
         "reasoningEffort": "Uvažování",
         "reasoningEffortValue": "Úvah. {{effort}}",
         "serviceTier": "Úroveň služby",
-        "serviceTierValue": "Úroveň {{tier}}"
+        "serviceTierValue": "Úroveň {{tier}}",
+        "upstreamModel": "Skutečný model"
       },
       "timeouts": {
         "entryLabel": "Pokročilé",
@@ -5410,12 +5484,6 @@
     },
     "quota": {
       "usedOfTotal": "{{used}} / {{total}}​"
-    },
-    "sessions": {
-      "title": "Lokální soubory relací",
-      "desc": "Lokální soubory relací — Lokální sken a otevření umístění.",
-      "empty": "Soubory relací nenalezeny",
-      "open": "Otevřít umístění"
     }
   },
   "qoder": {
@@ -6007,7 +6075,7 @@
   "apiKeyFun": {
     "eyebrow": "Přepojení",
     "title": "Relay APIKEY.FUN",
-    "description": "Oficiální partnerský relay Cockpit poskytuje stabilní, otevřený a cenově výhodný API přístup k velkým modelům. Podporuje hlavní modely jako Claude, OpenAI a Gemini a hodí se pro jednotnou konfiguraci v Codex, Gemini CLI, Claude Code a dalších vývojářských nástrojích. Registrací přes exkluzivní odkaz Cockpit můžete získat trvalou slevu až 5% na dobíjení.",
+    "description": "Oficiální partnerský relay Cockpit poskytuje stabilní, otevřený a cenově výhodný API přístup k velkým modelům. Podporuje hlavní modely jako Claude, ChatGPT, Grok, Gemini, Zhipu GLM, Kimi a DeepSeek a hodí se pro jednotnou konfiguraci v Codex, Gemini CLI, Claude Code a dalších vývojářských nástrojích. Registrací přes exkluzivní odkaz Cockpit můžete získat trvalou slevu až 5% na dobíjení.",
     "register": "Exkluzivní odkaz",
     "docs": "Oficiální dokumentace",
     "viewNow": "Zobrazit",
@@ -6119,13 +6187,34 @@
       "addToClaudeDesktop": "Přidat do Claude",
       "addToClaudeCli": "Přidat do Claude CLI",
       "codexShort": "Codex",
-      "claudeShort": "Claude CLI"
+      "claudeShort": "Claude CLI",
+      "deployToCodex": "Rychlé nasazení do Codexu",
+      "deploying": "Načítám modely…",
+      "deploySuccess": "Nasazeno do Codexu: {{count}} modelů",
+      "deployFailed": "Nasazení se nezdařilo: {{error}}",
+      "useKey": "Použít klíč"
     },
     "prefill": {
       "claudeDesktopReady": "Nastavení APIKEY.FUN je vyplněno. Potvrďte přidání do Claude."
     },
     "copyKey": "Copy Key​",
-    "clearKey": "Clear input​"
+    "clearKey": "Clear input​",
+    "table": {
+      "name": "Název",
+      "usage": "Využití",
+      "status": "Stav",
+      "createdAt": "Přidáno",
+      "actions": "Akce",
+      "statusOk": "Dostupný",
+      "statusBad": "Chyba",
+      "statusUnknown": "Neověřeno"
+    },
+    "config": {
+      "title": "Použít klíč API",
+      "family": "Skupina",
+      "platform": "Aktuální systém",
+      "unsupportedGroup": "Pro tuto skupinu zatím nejsou klienti s jedním kliknutím."
+    }
   },
   "grok": {
     "search": "Hledat účty Grok CLI...",

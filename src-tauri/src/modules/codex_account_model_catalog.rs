@@ -154,6 +154,18 @@ fn experimental_model_config_path(base_dir: &Path) -> PathBuf {
     base_dir.join(CODEX_EXPERIMENTAL_MODEL_CONFIG_FILE)
 }
 
+fn user_customized_model_catalog_marker_path(base_dir: &Path) -> PathBuf {
+    base_dir.join(CODEX_EXPERIMENTAL_MODEL_USER_CUSTOMIZED_FILE)
+}
+
+/// 用户是否主动接管了该 profile 的模型清单。
+///
+/// 只有 UI 保存清单时才会写标记；系统自动生成的清单（默认、迁移、重置）不带标记，
+/// 因此仍会跟随账号池。旧版本遗留的清单没有标记，会被视为系统生成并重新跟随池。
+pub(crate) fn has_saved_experimental_model_definitions(base_dir: &Path) -> bool {
+    user_customized_model_catalog_marker_path(base_dir).is_file()
+}
+
 fn experimental_model_previous_catalog_path(base_dir: &Path) -> PathBuf {
     base_dir.join(CODEX_EXPERIMENTAL_MODEL_PREVIOUS_CATALOG_FILE)
 }
@@ -266,8 +278,26 @@ struct ExperimentalModelCatalogConfig {
 }
 
 const GPT_6_ASTRA_DEFAULT_REPAIR_MIGRATION_ID: &str = "repair-gpt-6-astra-default-model";
-const GPT_6_ASTRA_DISPLAY_NAME_MIGRATION_ID: &str =
-    "rename-gpt-6-astra-display-name-to-6-astra";
+const BUILTIN_MODEL_DISPLAY_NAME_MIGRATION_ID: &str =
+    "prefix-builtin-model-display-names";
+
+/// 内建模型的早期短名 → 带官方 `GPT-` 前缀的展示名。
+///
+/// 只有「模型 ID 与短名同时匹配」的内建条目才会改名，用户自己改过的展示名不受影响。
+const BUILTIN_MODEL_DISPLAY_NAME_MIGRATIONS: &[(&str, &str, &str)] = &[
+    (GPT_6_ASTRA_MODEL_ID, "6 Astra", "GPT-6 Astra"),
+    (GPT_6_SOL_MODEL_ID, "6 Sol", "GPT-6 Sol"),
+    (GPT_6_LUNA_MODEL_ID, "6 Luna", "GPT-6 Luna"),
+    ("gpt-5.6-sol", "5.6 Sol", "GPT-5.6 Sol"),
+    ("gpt-5.6-terra", "5.6 Terra", "GPT-5.6 Terra"),
+    ("gpt-5.6-luna", "5.6 Luna", "GPT-5.6 Luna"),
+    ("gpt-5.3-codex", "5.3 Codex", "GPT-5.3 Codex"),
+    ("gpt-5.5", "5.5", "GPT-5.5"),
+    ("gpt-5.4", "5.4", "GPT-5.4"),
+    ("gpt-5.4-mini", "5.4 Mini", "GPT-5.4 Mini"),
+    ("gpt-5.3-codex-spark", "5.3 Codex Spark", "GPT-5.3 Codex Spark"),
+    ("gpt-5.6-sol-wm", "5.6 Sol WM", "GPT-5.6 Sol WM"),
+];
 
 fn read_experimental_model_catalog_config(
     base_dir: &Path,
@@ -276,60 +306,27 @@ fn read_experimental_model_catalog_config(
     serde_json::from_str::<ExperimentalModelCatalogConfig>(&content).ok()
 }
 
-fn strip_legacy_model_context_fields(base_dir: &Path) -> Result<bool, String> {
-    let path = experimental_model_config_path(base_dir);
-    let Ok(content) = fs::read_to_string(&path) else {
-        return Ok(false);
-    };
-    let mut config = serde_json::from_str::<serde_json::Value>(&content).map_err(|error| {
-        format!(
-            "解析 Codex 模型配置缓存失败: path={}, error={}",
-            path.display(),
-            error
-        )
-    })?;
-    let mut changed = false;
-    if let Some(models) = config
-        .get_mut("models")
-        .and_then(serde_json::Value::as_array_mut)
-    {
-        for model in models {
-            let Some(model) = model.as_object_mut() else {
-                continue;
-            };
-            changed |= model.remove("context_window").is_some();
-            changed |= model.remove("max_context_window").is_some();
-            changed |= model.remove("auto_compact_token_limit").is_some();
-        }
-    }
-    if !changed {
-        return Ok(false);
-    }
-    let mut content = serde_json::to_string_pretty(&config)
-        .map_err(|error| format!("序列化 Codex 模型配置缓存失败: {}", error))?;
-    content.push('\n');
-    write_string_atomic(&path, &content).map_err(|error| {
-        format!(
-            "清理 Codex 模型级上下文配置失败: path={}, error={}",
-            path.display(),
-            error
-        )
-    })?;
-    Ok(true)
-}
-
 fn experimental_model_catalog_has_migration(base_dir: &Path, migration_id: &str) -> bool {
     read_experimental_model_catalog_config(base_dir)
         .is_some_and(|config| config.migrations.iter().any(|item| item == migration_id))
 }
 
-fn is_legacy_gpt_6_astra_display_name(value: &serde_json::Value) -> bool {
-    value
-        .as_str()
-        .is_some_and(|name| name.trim().eq_ignore_ascii_case("GPT-6 Astra"))
+/// 该模型当前展示名是否是需要补前缀的内建短名；是则返回统一后的名字。
+fn prefixed_builtin_display_name(
+    model_id: &str,
+    value: &serde_json::Value,
+) -> Option<&'static str> {
+    let name = value.as_str()?.trim();
+    let model_id = model_id.trim();
+    BUILTIN_MODEL_DISPLAY_NAME_MIGRATIONS
+        .iter()
+        .find(|(id, legacy, _)| {
+            id.eq_ignore_ascii_case(model_id) && legacy.eq_ignore_ascii_case(name)
+        })
+        .map(|(_, _, canonical)| *canonical)
 }
 
-fn migrate_gpt_6_astra_display_name(
+fn migrate_builtin_model_display_names(
     base_dir: &Path,
     doc: &Document,
 ) -> Result<bool, String> {
@@ -370,25 +367,26 @@ fn migrate_gpt_6_astra_display_name(
             .and_then(serde_json::Value::as_array)
             .is_some_and(|migrations| {
                 migrations.iter().any(|migration| {
-                    migration.as_str() == Some(GPT_6_ASTRA_DISPLAY_NAME_MIGRATION_ID)
+                    migration.as_str() == Some(BUILTIN_MODEL_DISPLAY_NAME_MIGRATION_ID)
                 })
             });
         if !migration_already_applied {
             if let Some(models) = config.get_mut("models").and_then(serde_json::Value::as_array_mut)
             {
                 for model in models {
-                    let is_astra = model
+                    let model_id = model
                         .get("model_id")
                         .and_then(serde_json::Value::as_str)
-                        .is_some_and(|model_id| model_id.eq_ignore_ascii_case(GPT_6_ASTRA_MODEL_ID));
-                    if is_astra
-                        && model
-                            .get("display_name")
-                            .is_some_and(is_legacy_gpt_6_astra_display_name)
-                    {
-                        model["display_name"] = serde_json::Value::String("6 Astra".to_string());
-                        cached_config_needs_write = true;
-                    }
+                        .unwrap_or_default()
+                        .to_string();
+                    let Some(display_name) = model
+                        .get("display_name")
+                        .and_then(|value| prefixed_builtin_display_name(&model_id, value))
+                    else {
+                        continue;
+                    };
+                    model["display_name"] = serde_json::Value::String(display_name.to_string());
+                    cached_config_needs_write = true;
                 }
             }
             if let Some(object) = config.as_object_mut() {
@@ -397,7 +395,7 @@ fn migrate_gpt_6_astra_display_name(
                     .or_insert_with(|| serde_json::Value::Array(Vec::new()));
                 if let Some(migrations) = migrations.as_array_mut() {
                     migrations.push(serde_json::Value::String(
-                        GPT_6_ASTRA_DISPLAY_NAME_MIGRATION_ID.to_string(),
+                        BUILTIN_MODEL_DISPLAY_NAME_MIGRATION_ID.to_string(),
                     ));
                     cached_config_needs_write = true;
                 }
@@ -430,25 +428,23 @@ fn migrate_gpt_6_astra_display_name(
         })?;
         if let Some(models) = parsed.get_mut("models").and_then(serde_json::Value::as_array_mut) {
             for model in models {
-                let is_astra = model
+                let model_id = model
                     .get("slug")
                     .and_then(serde_json::Value::as_str)
-                    .is_some_and(|model_id| model_id.eq_ignore_ascii_case(GPT_6_ASTRA_MODEL_ID));
-                if !is_astra {
-                    continue;
-                }
-                if model
+                    .unwrap_or_default()
+                    .to_string();
+                if let Some(display_name) = model
                     .get("display_name")
-                    .is_some_and(is_legacy_gpt_6_astra_display_name)
+                    .and_then(|value| prefixed_builtin_display_name(&model_id, value))
                 {
-                    model["display_name"] = serde_json::Value::String("6 Astra".to_string());
+                    model["display_name"] = serde_json::Value::String(display_name.to_string());
                     catalog_changed = true;
                 }
-                if model
+                if let Some(description) = model
                     .get("description")
-                    .is_some_and(is_legacy_gpt_6_astra_display_name)
+                    .and_then(|value| prefixed_builtin_display_name(&model_id, value))
                 {
-                    model["description"] = serde_json::Value::String("6 Astra".to_string());
+                    model["description"] = serde_json::Value::String(description.to_string());
                     catalog_changed = true;
                 }
             }
@@ -500,16 +496,30 @@ fn migrate_gpt_6_astra_display_name(
     Ok(catalog_changed || cached_config_needs_write)
 }
 
-fn prioritize_gpt_6_astra_model_definition(
+/// 把 GPT-6 家族按官方推荐顺序（astra → sol → luna）排到清单最前面。
+///
+/// 官方客户端的推荐集把这三个模型放在 5.6 系列之前；缺失的条目会被跳过，
+/// 不会凭空插入用户清单里不存在的模型。
+fn prioritize_gpt_6_model_definitions(
     mut models: Vec<CodexExperimentalModelDefinition>,
 ) -> Vec<CodexExperimentalModelDefinition> {
-    if let Some(index) = models
-        .iter()
-        .position(|model| model.model_id.eq_ignore_ascii_case(GPT_6_ASTRA_MODEL_ID))
+    for (target_index, model_id) in [
+        GPT_6_ASTRA_MODEL_ID,
+        GPT_6_SOL_MODEL_ID,
+        GPT_6_LUNA_MODEL_ID,
+    ]
+    .into_iter()
+    .enumerate()
     {
-        if index > 0 {
-            let astra = models.remove(index);
-            models.insert(0, astra);
+        let Some(index) = models
+            .iter()
+            .position(|model| model.model_id.eq_ignore_ascii_case(model_id))
+        else {
+            continue;
+        };
+        if index > target_index {
+            let model = models.remove(index);
+            models.insert(target_index, model);
         }
     }
     models
@@ -611,6 +621,10 @@ fn default_experimental_model_definitions(
                     if model_id.is_empty() {
                         return None;
                     }
+                    // 默认清单不再提供 5.5 之前的官方模型；用户手动添加不受此限制。
+                    if crate::modules::codex_wakeup::is_codex_model_before_5_5(model_id) {
+                        return None;
+                    }
                     let display_name = model
                         .get("display_name")
                         .and_then(serde_json::Value::as_str)
@@ -621,6 +635,8 @@ fn default_experimental_model_definitions(
                         model_id: model_id.to_string(),
                         display_name: model_catalog_display_name(model_id, display_name),
                         reasoning_efforts: None,
+                        context_window: None,
+                        auto_compact_token_limit: None,
                     })
                 })
                 .collect::<Vec<_>>()
@@ -633,6 +649,8 @@ fn default_experimental_model_definitions(
                 display_name: model_id.clone(),
                 model_id,
                 reasoning_efforts: None,
+                context_window: None,
+                auto_compact_token_limit: None,
             })
             .collect()
     } else {
@@ -651,7 +669,7 @@ fn maybe_add_gpt_6_astra_to_previous_shipped_model_definitions(
         .iter()
         .any(|model| model.model_id.eq_ignore_ascii_case(GPT_6_ASTRA_MODEL_ID))
     {
-        return prioritize_gpt_6_astra_model_definition(models);
+        return prioritize_gpt_6_model_definitions(models);
     }
 
     let existing_ids = models
@@ -660,6 +678,8 @@ fn maybe_add_gpt_6_astra_to_previous_shipped_model_definitions(
         .collect::<HashSet<_>>();
     if !PRE_ASTRA_SHIPPED_VISIBLE_CODEX_MODEL_IDS
         .iter()
+        // 默认清单已不再包含 5.5 之前的模型，迁移判定也只要求当前仍在售的条目存在。
+        .filter(|model_id| !crate::modules::codex_wakeup::is_codex_model_before_5_5(model_id))
         .all(|model_id| existing_ids.contains(&model_id.to_ascii_lowercase()))
     {
         return models;
@@ -671,21 +691,78 @@ fn maybe_add_gpt_6_astra_to_previous_shipped_model_definitions(
     {
         models.insert(0, astra);
     }
-    prioritize_gpt_6_astra_model_definition(models)
+    prioritize_gpt_6_model_definitions(models)
+}
+
+/// 把 `gpt-6-sol` / `gpt-6-luna` 补进上一版自动生成的清单。
+///
+/// 与 astra 的补齐规则一致：只有清单仍与上一版随包发布的自动清单一致时才补齐，
+/// 用户自己增删过的精修清单保持原样（`gpt-6-sol` 与 `gpt-6-luna` 只存在其中一个时
+/// 同样视为用户已接管，不再自动改动）。
+fn maybe_add_gpt_6_sol_luna_to_previous_shipped_model_definitions(
+    base_dir: &Path,
+    mut models: Vec<CodexExperimentalModelDefinition>,
+) -> Vec<CodexExperimentalModelDefinition> {
+    let has_sol = models
+        .iter()
+        .any(|model| model.model_id.eq_ignore_ascii_case(GPT_6_SOL_MODEL_ID));
+    let has_luna = models
+        .iter()
+        .any(|model| model.model_id.eq_ignore_ascii_case(GPT_6_LUNA_MODEL_ID));
+    if has_sol || has_luna {
+        return prioritize_gpt_6_model_definitions(models);
+    }
+
+    let existing_ids = models
+        .iter()
+        .map(|model| model.model_id.to_ascii_lowercase())
+        .collect::<HashSet<_>>();
+    if !PRE_GPT_6_SOL_LUNA_SHIPPED_VISIBLE_CODEX_MODEL_IDS
+        .iter()
+        .filter(|model_id| !crate::modules::codex_wakeup::is_codex_model_before_5_5(model_id))
+        .all(|model_id| existing_ids.contains(&model_id.to_ascii_lowercase()))
+    {
+        return models;
+    }
+
+    let defaults = default_experimental_model_definitions(base_dir);
+    let mut additions = [GPT_6_SOL_MODEL_ID, GPT_6_LUNA_MODEL_ID]
+        .into_iter()
+        .filter_map(|model_id| {
+            defaults
+                .iter()
+                .find(|model| model.model_id.eq_ignore_ascii_case(model_id))
+                .cloned()
+        })
+        .collect::<Vec<_>>();
+    if additions.is_empty() {
+        return models;
+    }
+    let insert_at = models
+        .iter()
+        .position(|model| model.model_id.eq_ignore_ascii_case(GPT_6_ASTRA_MODEL_ID))
+        .map(|index| index + 1)
+        .unwrap_or(0);
+    for (offset, model) in additions.drain(..).enumerate() {
+        models.insert(insert_at + offset, model);
+    }
+    prioritize_gpt_6_model_definitions(models)
 }
 
 fn model_catalog_display_name(model_id: &str, fallback: &str) -> String {
     match model_id.trim().to_ascii_lowercase().as_str() {
-        "gpt-5.6-sol" => "5.6 Sol".to_string(),
-        "gpt-5.6-terra" => "5.6 Terra".to_string(),
-        "gpt-5.6-luna" => "5.6 Luna".to_string(),
-        GPT_6_ASTRA_MODEL_ID => "6 Astra".to_string(),
-        "gpt-5.3-codex" => "5.3 Codex".to_string(),
-        "gpt-5.5" => "5.5".to_string(),
-        "gpt-5.4" => "5.4".to_string(),
-        "gpt-5.4-mini" => "5.4 Mini".to_string(),
-        "gpt-5.3-codex-spark" => "5.3 Codex Spark".to_string(),
-        "gpt-5.6-sol-wm" => "5.6 Sol WM".to_string(),
+        "gpt-5.6-sol" => "GPT-5.6 Sol".to_string(),
+        "gpt-5.6-terra" => "GPT-5.6 Terra".to_string(),
+        "gpt-5.6-luna" => "GPT-5.6 Luna".to_string(),
+        GPT_6_ASTRA_MODEL_ID => "GPT-6 Astra".to_string(),
+        GPT_6_SOL_MODEL_ID => "GPT-6 Sol".to_string(),
+        GPT_6_LUNA_MODEL_ID => "GPT-6 Luna".to_string(),
+        "gpt-5.3-codex" => "GPT-5.3 Codex".to_string(),
+        "gpt-5.5" => "GPT-5.5".to_string(),
+        "gpt-5.4" => "GPT-5.4".to_string(),
+        "gpt-5.4-mini" => "GPT-5.4 Mini".to_string(),
+        "gpt-5.3-codex-spark" => "GPT-5.3 Codex Spark".to_string(),
+        "gpt-5.6-sol-wm" => "GPT-5.6 Sol WM".to_string(),
         _ => fallback.trim().to_string(),
     }
 }
@@ -742,10 +819,27 @@ pub(crate) fn normalize_experimental_model_definitions(
         if !seen.insert(key) {
             return Err("EXPERIMENTAL_MODEL_CATALOG_MODEL_ID_DUPLICATE".to_string());
         }
+        if model.context_window.is_some_and(|value| value <= 0)
+            || (model.context_window.is_none() && model.auto_compact_token_limit.is_some())
+        {
+            return Err("EXPERIMENTAL_MODEL_CATALOG_CONTEXT_WINDOW_INVALID".to_string());
+        }
+        if model.auto_compact_token_limit.is_some_and(|value| value <= 0)
+            || (model.context_window.is_some() && model.auto_compact_token_limit.is_none())
+        {
+            return Err("EXPERIMENTAL_MODEL_CATALOG_AUTO_COMPACT_INVALID".to_string());
+        }
+        if let (Some(window), Some(compact)) = (model.context_window, model.auto_compact_token_limit) {
+            if compact >= window {
+                return Err("EXPERIMENTAL_MODEL_CATALOG_AUTO_COMPACT_RANGE_INVALID".to_string());
+            }
+        }
         normalized.push(CodexExperimentalModelDefinition {
             model_id: model_id.to_string(),
             display_name: display_name.to_string(),
             reasoning_efforts: normalize_reasoning_efforts(model.reasoning_efforts.clone())?,
+            context_window: model.context_window,
+            auto_compact_token_limit: model.auto_compact_token_limit,
         });
     }
     Ok(normalized)
@@ -754,12 +848,6 @@ pub(crate) fn normalize_experimental_model_definitions(
 pub(crate) fn read_experimental_model_definitions(
     base_dir: &Path,
 ) -> Vec<CodexExperimentalModelDefinition> {
-    if let Err(error) = strip_legacy_model_context_fields(base_dir) {
-        logger::log_warn(&format!(
-            "[Codex模型管理] 清理历史模型级上下文配置失败，已忽略该字段: {}",
-            error
-        ));
-    }
     let path = experimental_model_config_path(base_dir);
     let Ok(content) = fs::read_to_string(&path) else {
         return default_experimental_model_definitions(base_dir);
@@ -774,20 +862,38 @@ pub(crate) fn read_experimental_model_definitions(
                     .migrations
                     .iter()
                     .any(|item| item == GPT_6_ASTRA_MODEL_CATALOG_MIGRATION_ID);
+            let should_add_sol_luna = config.version == EXPERIMENTAL_MODEL_CATALOG_CONFIG_VERSION
+                && !config
+                    .migrations
+                    .iter()
+                    .any(|item| item == GPT_6_SOL_LUNA_MODEL_CATALOG_MIGRATION_ID);
             normalize_experimental_model_definitions(config.models).map(|models| {
-                (models, requires_catalog_migration, should_add_astra)
+                (
+                    models,
+                    requires_catalog_migration,
+                    should_add_astra,
+                    should_add_sol_luna,
+                )
             })
         })
     {
-        Ok((_models, true, _)) => {
+        Ok((_models, true, _, _)) => {
             // A release migration intentionally resets all pre-release lists to the
             // shipped visible-model preset. Later user edits are preserved by version 4+
-            // and the additive Astra migration marker.
+            // and the additive Astra / GPT-6 Sol-Luna migration markers.
             default_experimental_model_definitions(base_dir)
         }
-        Ok((models, false, false)) => prioritize_gpt_6_astra_model_definition(models),
-        Ok((models, false, true)) => {
-            maybe_add_gpt_6_astra_to_previous_shipped_model_definitions(base_dir, models)
+        Ok((models, false, should_add_astra, should_add_sol_luna)) => {
+            let models = if should_add_astra {
+                maybe_add_gpt_6_astra_to_previous_shipped_model_definitions(base_dir, models)
+            } else {
+                prioritize_gpt_6_model_definitions(models)
+            };
+            if should_add_sol_luna {
+                maybe_add_gpt_6_sol_luna_to_previous_shipped_model_definitions(base_dir, models)
+            } else {
+                prioritize_gpt_6_model_definitions(models)
+            }
         }
         Err(error) => {
             logger::log_warn(&format!(
@@ -801,8 +907,10 @@ pub(crate) fn read_experimental_model_definitions(
     if !models.iter().any(|model| model.model_id.eq_ignore_ascii_case("gpt-reserve")) {
         models.push(CodexExperimentalModelDefinition {
             model_id: "gpt-reserve".to_string(),
-            display_name: "Luna Reserve".to_string(),
+            display_name: crate::modules::codex_protocol::CODEX_RESERVE_DISPLAY_NAME.to_string(),
             reasoning_efforts: None,
+            context_window: None,
+            auto_compact_token_limit: None,
         });
     }
     models
@@ -818,7 +926,7 @@ fn persist_experimental_model_definitions(
         .as_ref()
         .and_then(|config| config.default_model_id.as_deref())
         .is_some_and(|model_id| model_id.eq_ignore_ascii_case(GPT_6_ASTRA_MODEL_ID));
-    let models = prioritize_gpt_6_astra_model_definition(normalize_experimental_model_definitions(
+    let models = prioritize_gpt_6_model_definitions(normalize_experimental_model_definitions(
         models,
     )?);
     let mut default_model_id = default_model_id.and_then(|value| {
@@ -853,6 +961,12 @@ fn persist_experimental_model_definitions(
         .any(|item| item == GPT_6_ASTRA_MODEL_CATALOG_MIGRATION_ID)
     {
         migrations.push(GPT_6_ASTRA_MODEL_CATALOG_MIGRATION_ID.to_string());
+    }
+    if !migrations
+        .iter()
+        .any(|item| item == GPT_6_SOL_LUNA_MODEL_CATALOG_MIGRATION_ID)
+    {
+        migrations.push(GPT_6_SOL_LUNA_MODEL_CATALOG_MIGRATION_ID.to_string());
     }
     let mut content = serde_json::to_string_pretty(&ExperimentalModelCatalogConfig {
         version: EXPERIMENTAL_MODEL_CATALOG_CONFIG_VERSION,
@@ -893,6 +1007,39 @@ fn persist_experimental_model_policy(base_dir: &Path, enabled: bool) -> Result<(
     }
 }
 
+fn apply_model_context_config_to_catalog(
+    catalog: &mut serde_json::Value,
+    models: &[CodexExperimentalModelDefinition],
+) {
+    let definitions = models
+        .iter()
+        .map(|model| (
+            model.model_id.clone(),
+            model.context_window,
+            model.auto_compact_token_limit,
+        ))
+        .collect::<Vec<_>>();
+    crate::modules::codex_protocol::apply_model_context_overrides(catalog, &definitions);
+}
+
+pub(crate) fn decorate_managed_model_catalog_for_profile(
+    base_dir: &Path,
+    catalog_json: &str,
+) -> Result<String, String> {
+    if !experimental_model_policy_enabled(base_dir) {
+        return Ok(catalog_json.to_string());
+    }
+    let models = read_experimental_model_definitions(base_dir);
+    if !models.iter().any(|model| model.context_window.is_some()) {
+        return Ok(catalog_json.to_string());
+    }
+    let mut catalog = serde_json::from_str::<serde_json::Value>(catalog_json)
+        .map_err(|error| format!("解析 Codex 受管模型目录失败: {}", error))?;
+    apply_model_context_config_to_catalog(&mut catalog, &models);
+    serde_json::to_string_pretty(&catalog)
+        .map_err(|error| format!("序列化 Codex 受管模型目录失败: {}", error))
+}
+
 fn build_experimental_model_catalog(base_dir: &Path) -> Result<String, String> {
     let model_definitions = read_experimental_model_definitions(base_dir);
     let definitions = model_definitions
@@ -908,6 +1055,7 @@ fn build_experimental_model_catalog(base_dir: &Path) -> Result<String, String> {
     let mut catalog =
         crate::modules::codex_protocol::build_codex_client_models_response_with_model_definitions_and_reasoning(&definitions);
     crate::modules::codex_protocol::ensure_codex_reserve_fallback(&mut catalog);
+    apply_model_context_config_to_catalog(&mut catalog, &model_definitions);
     serde_json::to_string_pretty(&catalog)
         .map(|mut content| {
             content.push('\n');
@@ -1035,10 +1183,24 @@ fn read_catalog_model_definitions(
                 .map(str::trim)
                 .filter(|value| !value.is_empty() && value.chars().count() <= 100)
                 .unwrap_or(model_id);
+            let context = model.get("context_window").and_then(serde_json::Value::as_i64);
+            let compact = model.get("auto_compact_token_limit").and_then(serde_json::Value::as_i64);
+            let official = crate::modules::codex_protocol::build_codex_client_models_response(
+                &[model_id.to_string()],
+            );
+            let (context_window, auto_compact_token_limit) = match (context, compact) {
+                (Some(window), Some(limit)) if window > limit && limit > 0
+                    && (official["models"][0]["context_window"].as_i64() != Some(window)
+                        || official["models"][0]["auto_compact_token_limit"].as_i64() != Some(limit)) =>
+                    (Some(window), Some(limit)),
+                _ => (None, None),
+            };
             Some(CodexExperimentalModelDefinition {
                 model_id: model_id.to_string(),
                 display_name: model_catalog_display_name(model_id, display_name),
                 reasoning_efforts: None,
+                context_window,
+                auto_compact_token_limit,
             })
         })
         .collect()
@@ -1049,10 +1211,15 @@ fn merge_model_definitions(
     extra: Vec<CodexExperimentalModelDefinition>,
 ) -> Vec<CodexExperimentalModelDefinition> {
     for model in extra {
-        if !definitions
-            .iter()
-            .any(|existing| existing.model_id.eq_ignore_ascii_case(&model.model_id))
+        if let Some(existing) = definitions
+            .iter_mut()
+            .find(|existing| existing.model_id.eq_ignore_ascii_case(&model.model_id))
         {
+            if model.context_window.is_some() {
+                existing.context_window = model.context_window;
+                existing.auto_compact_token_limit = model.auto_compact_token_limit;
+            }
+        } else {
             definitions.push(model);
         }
     }
@@ -1136,7 +1303,11 @@ fn apply_experimental_model_catalog_to_doc(
     let has_saved_model_definitions = experimental_model_config_path(base_dir).is_file();
     let migrate_saved_model_definitions = has_saved_model_definitions
         && experimental_model_config_requires_catalog_migration(base_dir);
-    let mut experimental_models = read_experimental_model_definitions(base_dir);
+    let mut experimental_models =
+        crate::modules::codex_local_access::overlay_rendered_pool_models_on_experimental_catalog(
+            base_dir,
+            read_experimental_model_definitions(base_dir),
+        );
     let user_catalog_reference = configured_catalog
         .as_deref()
         .filter(|catalog| !catalog_ref_targets_cockpit_managed_file(catalog, base_dir));
@@ -1361,7 +1532,7 @@ pub fn read_quick_config_from_config_toml(base_dir: &Path) -> Result<CodexQuickC
         crate::modules::codex_config_format::read_codex_config_doc_from_str(&content)
             .map_err(|e| format!("解析 config.toml 失败: {}", e))?
     };
-    if let Err(error) = migrate_gpt_6_astra_display_name(base_dir, &doc) {
+    if let Err(error) = migrate_builtin_model_display_names(base_dir, &doc) {
         logger::log_warn(&format!(
             "[Codex实验模型] 迁移 GPT-6 Astra 显示名称失败，继续读取现有配置: {}",
             error
@@ -1375,7 +1546,16 @@ pub fn read_quick_config_from_config_toml(base_dir: &Path) -> Result<CodexQuickC
     let context_management_experimental_mode =
         read_context_management_experimental_mode_from_doc(&doc);
     let experimental = inspect_experimental_model_catalog(base_dir, &doc)?;
-    let experimental_models = read_experimental_model_definitions(base_dir);
+    let saved_model_definitions = read_experimental_model_definitions(base_dir);
+    let experimental_models = if has_saved_experimental_model_definitions(base_dir) {
+        // 用户已接管模型清单：只读取用户定义，不再叠加账号池模型或移除官方条目。
+        saved_model_definitions
+    } else {
+        crate::modules::codex_local_access::overlay_rendered_pool_models_on_experimental_catalog(
+            base_dir,
+            saved_model_definitions,
+        )
+    };
     let experimental_default_model_id =
         read_experimental_model_default_model_id(base_dir).or_else(|| {
             if !experimental.enabled {
@@ -1394,6 +1574,24 @@ pub fn read_quick_config_from_config_toml(base_dir: &Path) -> Result<CodexQuickC
                 .find(|model| model.model_id.eq_ignore_ascii_case(configured_model))
                 .map(|model| model.model_id.clone())
         });
+    let experimental_default_model_id = experimental_default_model_id.and_then(|model_id| {
+        experimental_models
+            .iter()
+            .find(|model| model.model_id.eq_ignore_ascii_case(&model_id))
+            .map(|model| model.model_id.clone())
+    }).or_else(|| {
+        experimental.enabled.then(|| experimental_models.first().map(|model| model.model_id.clone())).flatten()
+    });
+    let experimental_reset_models =
+        crate::modules::codex_local_access::overlay_rendered_pool_models_on_experimental_catalog(
+            base_dir,
+            default_experimental_model_definitions(base_dir),
+        );
+    let experimental_reset_default_model_id = experimental_reset_models
+        .iter()
+        .find(|model| model.model_id.eq_ignore_ascii_case(DEFAULT_CODEX_MODEL_ID))
+        .or_else(|| experimental_reset_models.first())
+        .map(|model| model.model_id.clone());
 
     Ok(CodexQuickConfig {
         context_window_1m: detected_model_context_window == Some(CODEX_CONTEXT_WINDOW_1M_VALUE),
@@ -1407,8 +1605,8 @@ pub fn read_quick_config_from_config_toml(base_dir: &Path) -> Result<CodexQuickC
         experimental_model_catalog_conflict: experimental.conflict,
         experimental_model_catalog_models: experimental_models,
         experimental_model_catalog_default_model_id: experimental_default_model_id,
-        experimental_model_catalog_reset_models: default_experimental_model_definitions(base_dir),
-        experimental_model_catalog_reset_default_model_id: Some(DEFAULT_CODEX_MODEL_ID.to_string()),
+        experimental_model_catalog_reset_models: experimental_reset_models,
+        experimental_model_catalog_reset_default_model_id: experimental_reset_default_model_id,
         context_management_experimental_mode,
     })
 }
@@ -1538,9 +1736,15 @@ fn write_quick_config_to_config_toml_with_default_mode(
     {
         persist_experimental_model_definitions(
             base_dir,
-            models,
+            crate::modules::codex_local_access::overlay_rendered_pool_models_on_experimental_catalog(
+                base_dir,
+                models,
+            ),
             experimental_model_catalog_default_model_id.as_deref(),
         )?;
+        // 用户通过 UI 保存了清单：从这里开始系统不再自动增删条目。
+        write_string_atomic(&user_customized_model_catalog_marker_path(base_dir), "customized\n")
+            .map_err(|error| format!("写入模型清单自定义标记失败: {}", error))?;
     }
 
     let effective_experimental_enabled = experimental_model_catalog_enabled
@@ -1590,6 +1794,7 @@ fn write_quick_config_to_config_toml_with_default_mode(
         cleanup_legacy_managed_model_catalogs(base_dir);
         clear_previous_experimental_catalog_reference(base_dir)?;
         clear_experimental_model_catalog_config(base_dir)?;
+        let _ = fs::remove_file(user_customized_model_catalog_marker_path(base_dir));
     }
 
     read_quick_config_from_config_toml(base_dir)
@@ -2006,6 +2211,8 @@ fn sync_api_key_model_catalog_to_dir(
     if !account_syncs_model_catalog_to_codex(account) {
         return Ok(false);
     }
+    // 官方 DeepSeek 使用官方 DeepSeek 目录/工具声明，避免客户端发出上游不认的
+    // GPT 专属字段（如 web_search 的 search_content_types）。
     if is_deepseek_responses_account(account) {
         return sync_deepseek_shell_remap_catalog_to_dir(base_dir, account);
     }
@@ -2033,7 +2240,9 @@ fn sync_api_key_model_catalog_to_dir(
     }
 
     let upstream_models = normalize_api_model_catalog(account.api_model_catalog.clone());
-    let slots = crate::modules::codex_local_access::allocate_provider_model_slots(&upstream_models);
+    // 直连上游 / CDP 注入用上游真实模型 ID；其余按官方壳位分配。
+    let slots =
+        crate::modules::codex_local_access::provider_model_slots_for_account(account, &upstream_models);
     let client_models = slots
         .iter()
         .map(|slot| slot.client_model.clone())
@@ -2060,6 +2269,7 @@ fn sync_api_key_model_catalog_to_dir(
         account,
         crate::modules::codex_local_access::read_toml_model_context_window(&doc),
     )?;
+    let content = decorate_managed_model_catalog_for_profile(base_dir, &content)?;
     let catalog_path = base_dir.join(CODEX_MANAGED_MODEL_CATALOG_FILE);
     write_string_atomic(&catalog_path, &content).map_err(|e| {
         format!(
@@ -2068,6 +2278,17 @@ fn sync_api_key_model_catalog_to_dir(
             e
         )
     })?;
+    if let Err(err) =
+        crate::modules::codex_managed_model_catalog_version::write_managed_catalog_meta(
+            &catalog_path,
+        )
+    {
+        logger::log_warn(&format!(
+            "[Codex模型目录] 写入版本戳失败: path={}, error={}",
+            catalog_path.display(),
+            err
+        ));
+    }
     cleanup_legacy_managed_model_catalogs(base_dir);
 
     doc[CODEX_CONFIG_MODEL_CATALOG_JSON_KEY] = value(CODEX_MANAGED_MODEL_CATALOG_FILE);
@@ -2107,6 +2328,12 @@ fn sync_or_cleanup_account_model_catalog_for_dir(
     }
     let _ = cleanup_deepseek_official_model_catalog_for_dir(base_dir)?;
     if account_syncs_model_catalog_to_codex(account) {
+        // 第三方 CDP 注入：模型清单由注入脚本写入官方客户端，不再写壳位目录，
+        // 否则客户端会同时看到注入列表与壳位列表。
+        if crate::modules::codex_account::account_uses_cdp_model_injection(account) {
+            let _ = cleanup_managed_model_catalog_for_dir(base_dir)?;
+            return Ok(());
+        }
         let _ = sync_api_key_model_catalog_to_dir(base_dir, account)?;
     } else {
         let _ = cleanup_managed_model_catalog_for_dir(base_dir)?;
@@ -2163,6 +2390,9 @@ fn cleanup_managed_model_catalog_for_dir(base_dir: &Path) -> Result<bool, String
                     e
                 )
             })?;
+            crate::modules::codex_managed_model_catalog_version::remove_managed_catalog_meta(
+                &catalog_path,
+            );
             changed = true;
         }
     }
@@ -2184,6 +2414,100 @@ fn cleanup_managed_model_catalog_for_dir(base_dir: &Path) -> Result<bool, String
         changed = true;
     }
     Ok(changed)
+}
+
+/// 启动时按版本戳重建落后的受管模型目录。
+///
+/// 目录内容用「旧目录里的模型清单 + 当前生成逻辑」重建，只刷新结构/能力字段，
+/// 不改变用户实际可用的模型集合；展示名沿用旧目录，避免界面名称漂移。
+pub(crate) fn rebuild_stale_managed_model_catalogs() -> usize {
+    let mut rebuilt = 0usize;
+    for base_dir in managed_catalog_profile_dirs() {
+        let catalog_path = base_dir.join(CODEX_MANAGED_MODEL_CATALOG_FILE);
+        if !crate::modules::codex_managed_model_catalog_version::managed_catalog_needs_rebuild(
+            &catalog_path,
+        ) {
+            continue;
+        }
+        match rebuild_managed_catalog_from_existing(&catalog_path) {
+            Ok(()) => {
+                rebuilt += 1;
+                logger::log_info(&format!(
+                    "[Codex模型目录] 已按当前版本重建模型目录: path={}",
+                    catalog_path.display()
+                ));
+            }
+            Err(err) => logger::log_warn(&format!(
+                "[Codex模型目录] 重建模型目录失败: path={}, error={}",
+                catalog_path.display(),
+                err
+            )),
+        }
+    }
+    rebuilt
+}
+
+fn managed_catalog_profile_dirs() -> Vec<PathBuf> {
+    let mut dirs = vec![get_codex_home()];
+    if let Ok(data_dir) = crate::modules::account::get_data_dir() {
+        let root = data_dir.join("instances").join("codex");
+        if let Ok(entries) = fs::read_dir(&root) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    dirs.push(path);
+                }
+            }
+        }
+    }
+    dirs
+}
+
+fn rebuild_managed_catalog_from_existing(catalog_path: &Path) -> Result<(), String> {
+    use serde_json::Value as JsonValue;
+
+    let existing =
+        fs::read_to_string(catalog_path).map_err(|e| format!("读取现有模型目录失败: {}", e))?;
+    let parsed: JsonValue =
+        serde_json::from_str(&existing).map_err(|e| format!("解析现有模型目录失败: {}", e))?;
+    let old_models = parsed
+        .get("models")
+        .and_then(JsonValue::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let model_ids = old_models
+        .iter()
+        .filter_map(|model| model.get("slug").and_then(JsonValue::as_str).map(str::to_string))
+        .collect::<Vec<_>>();
+    if model_ids.is_empty() {
+        return Err("现有模型目录没有可重建的模型条目".to_string());
+    }
+    let mut rebuilt =
+        crate::modules::codex_protocol::build_codex_client_models_response(&model_ids);
+    if let Some(new_models) = rebuilt.get_mut("models").and_then(JsonValue::as_array_mut) {
+        for model in new_models.iter_mut() {
+            let Some(slug) = model.get("slug").and_then(JsonValue::as_str).map(str::to_string)
+            else {
+                continue;
+            };
+            let Some(old) = old_models
+                .iter()
+                .find(|item| item.get("slug").and_then(JsonValue::as_str) == Some(slug.as_str()))
+            else {
+                continue;
+            };
+            for field in ["display_name", "description"] {
+                if let Some(value) = old.get(field).filter(|value| value.is_string()) {
+                    model[field] = value.clone();
+                }
+            }
+        }
+    }
+    let mut content = serde_json::to_string_pretty(&rebuilt)
+        .map_err(|e| format!("序列化重建后的模型目录失败: {}", e))?;
+    content.push('\n');
+    crate::modules::atomic_write::write_string_atomic(catalog_path, &content)?;
+    crate::modules::codex_managed_model_catalog_version::write_managed_catalog_meta(catalog_path)
 }
 
 fn collect_managed_api_key_provider_ids() -> HashSet<String> {

@@ -42,6 +42,36 @@ type sidecarRuntime struct {
 	done    chan error
 }
 
+// sidecarOAuthProviders 是 manifest OAuth auth 文件允许使用的上游 provider。
+// codex 走官方 Codex/ChatGPT 执行器，xai 走 Grok(xAI) 执行器（Cockpit 的 Grok
+// 平台账号以 xai OAuth auth 文件形式交给 sidecar），其它 provider 一律拒绝。
+func sidecarOAuthProviderSupported(provider string) bool {
+	switch normalizedSidecarProvider(provider) {
+	case "codex", "xai":
+		return true
+	default:
+		return false
+	}
+}
+
+// normalizedSidecarProvider 把宿主 manifest 中沿用的平台名归一化为 sidecar 的
+// provider ID。Grok 账号在宿主侧写作 "grok"，而 sidecar 的执行器与模型注册
+// 统一使用 "xai"；这里必须归一化，否则模型归属判定会漏掉这些账号。
+func normalizedSidecarProvider(provider string) string {
+	switch strings.ToLower(strings.TrimSpace(provider)) {
+	case "grok":
+		return "xai"
+	default:
+		return strings.ToLower(strings.TrimSpace(provider))
+	}
+}
+
+// executionProviders 返回一次请求允许参与调度的 provider 列表。
+// 账号与模型都按 provider 注册，因此模型名即可决定落到 codex 还是 xai 上游。
+func executionProviders() []string {
+	return []string{"codex", "xai"}
+}
+
 // CodexAlphaSearch selects a Codex OAuth credential and forwards the standalone
 // search payload to the ChatGPT Codex alpha search backend.
 func (r *sidecarRuntime) CodexAlphaSearch(ctx context.Context, model string, body []byte, headers http.Header) (int, http.Header, []byte, error) {
@@ -225,6 +255,7 @@ func newSidecarRuntime(ctx context.Context, configPath string, cfg *config.Confi
 		sdkauth.NewClaudeAuthenticator(),
 		sdkauth.NewAntigravityAuthenticator(),
 		sdkauth.NewKimiAuthenticator(),
+		sdkauth.NewXAIAuthenticator(),
 	)
 	readyCh := make(chan struct{})
 	var readyOnce sync.Once
@@ -278,7 +309,7 @@ func newSidecarRuntime(ctx context.Context, configPath string, cfg *config.Confi
 		return nil, err
 	}
 	for _, auth := range manager.List() {
-		if auth == nil || !strings.EqualFold(strings.TrimSpace(auth.Provider), "codex") {
+		if auth == nil || !sidecarOAuthProviderSupported(auth.Provider) {
 			continue
 		}
 		linkManifestAccountForAuth(m, auth)
@@ -355,19 +386,21 @@ func registerManifestCodexTokenAuths(
 func readManifestCodexTokenAuth(account *accountSpec, authDir, path string) (*coreauth.Auth, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("read codex token auth file %s: %w", path, err)
+		return nil, fmt.Errorf("read manifest token auth file %s: %w", path, err)
 	}
 	metadata := make(map[string]any)
 	if err = json.Unmarshal(data, &metadata); err != nil {
-		return nil, fmt.Errorf("parse codex token auth file %s: %w", path, err)
+		return nil, fmt.Errorf("parse manifest token auth file %s: %w", path, err)
 	}
-	provider := strings.TrimSpace(metadataString(metadata, "type"))
+	provider := manifestTokenAuthProvider(account, metadata)
 	if provider == "" {
 		provider = "codex"
 	}
-	if !strings.EqualFold(provider, "codex") {
-		return nil, fmt.Errorf("codex token auth file %s has unsupported provider %q", path, provider)
+	provider = normalizedSidecarProvider(provider)
+	if !sidecarOAuthProviderSupported(provider) {
+		return nil, fmt.Errorf("manifest token auth file %s has unsupported provider %q", path, provider)
 	}
+	provider = strings.ToLower(provider)
 	accessToken := firstMetadataString(
 		metadata,
 		"personal_access_token",
@@ -375,9 +408,10 @@ func readManifestCodexTokenAuth(account *accountSpec, authDir, path string) (*co
 		"access_token",
 	)
 	authMode := firstMetadataString(metadata, "auth_mode", "openai_auth_mode")
-	isAgentIdentity := strings.EqualFold(authMode, "agentIdentity") || manifestAccountAuthKind(account) == "agent_identity"
+	isAgentIdentity := provider == "codex" &&
+		(strings.EqualFold(authMode, "agentIdentity") || manifestAccountAuthKind(account) == "agent_identity")
 	if accessToken == "" && !isAgentIdentity {
-		return nil, fmt.Errorf("codex token auth file %s is missing access_token", path)
+		return nil, fmt.Errorf("manifest token auth file %s is missing access_token", path)
 	}
 	if isAgentIdentity {
 		if firstMetadataString(metadata, "agent_runtime_id", "agentRuntimeId") == "" ||
@@ -392,7 +426,7 @@ func readManifestCodexTokenAuth(account *accountSpec, authDir, path string) (*co
 			metadata["token_type"] = "Bearer"
 		}
 	}
-	if account != nil &&
+	if provider == "codex" && account != nil &&
 		(account.AccessTokenOnly || manifestAccountAuthKind(account) == "access_token") {
 		if strings.TrimSpace(metadataString(metadata, "auth_mode")) == "" {
 			metadata["auth_mode"] = "personal_access_token"
@@ -404,7 +438,7 @@ func readManifestCodexTokenAuth(account *accountSpec, authDir, path string) (*co
 
 	info, err := os.Stat(path)
 	if err != nil {
-		return nil, fmt.Errorf("stat codex token auth file %s: %w", path, err)
+		return nil, fmt.Errorf("stat manifest token auth file %s: %w", path, err)
 	}
 	id := manifestAuthFileID(authDir, path)
 	label := ""
@@ -425,27 +459,29 @@ func readManifestCodexTokenAuth(account *accountSpec, authDir, path string) (*co
 	}
 	auth := &coreauth.Auth{
 		ID:       id,
-		Provider: "codex",
+		Provider: provider,
 		FileName: id,
 		Label:    label,
 		Status:   status,
 		Disabled: disabled,
 		Attributes: map[string]string{
-			"path":       path,
-			"auth_kind":  runtimeAuthKind,
-			"websockets": "true",
+			"path":      path,
+			"auth_kind": runtimeAuthKind,
 		},
 		Metadata:        metadata,
 		CreatedAt:       info.ModTime(),
 		UpdatedAt:       info.ModTime(),
 		LastRefreshedAt: time.Time{},
 	}
+	if provider == "codex" {
+		auth.Attributes["websockets"] = "true"
+	}
 	if account != nil {
 		auth.Attributes["account_id"] = strings.TrimSpace(account.ID)
 		if strings.TrimSpace(account.Email) != "" {
 			auth.Attributes["email"] = strings.TrimSpace(account.Email)
 		}
-		if strings.TrimSpace(account.ChatGPTAccountID) != "" {
+		if provider == "codex" && strings.TrimSpace(account.ChatGPTAccountID) != "" {
 			auth.Attributes["chatgpt_account_id"] = strings.TrimSpace(account.ChatGPTAccountID)
 		}
 	}
@@ -460,6 +496,18 @@ func readManifestCodexTokenAuth(account *accountSpec, authDir, path string) (*co
 	}
 	coreauth.ApplyCustomHeadersFromMetadata(auth)
 	return auth, nil
+}
+
+// manifestTokenAuthProvider 解析 manifest OAuth auth 文件的上游 provider。
+// auth 文件里的 `type` 优先（Cockpit 写入的真实 provider），其次是 manifest 账号字段。
+func manifestTokenAuthProvider(account *accountSpec, metadata map[string]any) string {
+	if provider := strings.TrimSpace(metadataString(metadata, "type")); provider != "" {
+		return provider
+	}
+	if account != nil {
+		return strings.TrimSpace(account.Provider)
+	}
+	return ""
 }
 
 func manifestAccountAuthKind(account *accountSpec) string {
@@ -657,15 +705,61 @@ func registerManifestModelsForAuth(manager *coreauth.Manager, m *manifest, auth 
 	if manager == nil || m == nil || auth == nil || strings.TrimSpace(auth.ID) == "" {
 		return
 	}
-	models := filterRegistryModelsByExcluded(manifestRegistryModels(m), excludedModelsForAuth(m, auth))
+	provider := strings.ToLower(strings.TrimSpace(auth.Provider))
+	if provider == "" {
+		provider = "codex"
+	}
+	models := filterRegistryModelsByExcluded(manifestModelsForAuth(m, auth), excludedModelsForAuth(m, auth))
 	if len(models) == 0 {
 		cliproxy.GlobalModelRegistry().UnregisterClient(auth.ID)
 		manager.RefreshSchedulerEntry(auth.ID)
 		return
 	}
-	cliproxy.GlobalModelRegistry().RegisterClient(auth.ID, "codex", models)
+	cliproxy.GlobalModelRegistry().RegisterClient(auth.ID, provider, models)
 	manager.ReconcileRegistryModelStates(context.Background(), auth.ID)
 	manager.RefreshSchedulerEntry(auth.ID)
+}
+
+// manifestModelsForAuth 返回某个 auth 可以承接的客户端模型。
+//
+// codex auth 使用 manifest 全量模型目录（官方模型 + Cockpit 自定义模型）。
+// 第三方 OAuth provider（例如 xai/Grok）只暴露它自己账号的模型，避免把官方
+// Codex 模型错误注册到该账号上。
+func manifestModelsForAuth(m *manifest, auth *coreauth.Auth) []*cliproxy.ModelInfo {
+	if m == nil || auth == nil {
+		return nil
+	}
+	provider := strings.ToLower(strings.TrimSpace(auth.Provider))
+	if provider == "" || provider == "codex" {
+		models := manifestRegistryModels(m)
+		// 仅由第三方 provider（例如 xai/Grok）承接的模型不能注册到 Codex 账号上，
+		// 否则调度会把 grok 模型发给 ChatGPT 上游。
+		thirdPartyModels := xaiOnlyModelIDs(m)
+		if len(thirdPartyModels) == 0 {
+			return models
+		}
+		filtered := make([]*cliproxy.ModelInfo, 0, len(models))
+		for _, model := range models {
+			if model == nil {
+				continue
+			}
+			if _, thirdParty := thirdPartyModels[strings.ToLower(strings.TrimSpace(model.ID))]; thirdParty {
+				continue
+			}
+			filtered = append(filtered, model)
+		}
+		return filtered
+	}
+	account := accountForAuthInManifest(m, auth)
+	if account == nil || len(account.ModelIDs) == 0 {
+		return nil
+	}
+	entries := make([]manifestRegistryModelEntry, 0, len(account.ModelIDs))
+	seen := make(map[string]struct{}, len(account.ModelIDs))
+	for _, id := range account.ModelIDs {
+		entries = appendManifestRegistryModelEntry(entries, seen, id, "")
+	}
+	return manifestRegistryModelInfos(entries)
 }
 
 func excludedModelsForAuth(m *manifest, auth *coreauth.Auth) []string {
@@ -801,6 +895,10 @@ func manifestRegistryModels(m *manifest) []*cliproxy.ModelInfo {
 	for _, id := range appendCodexInternalModels(nil) {
 		entries = appendManifestRegistryModelEntry(entries, seen, id, "")
 	}
+	return manifestRegistryModelInfos(entries)
+}
+
+func manifestRegistryModelInfos(entries []manifestRegistryModelEntry) []*cliproxy.ModelInfo {
 	models := make([]*cliproxy.ModelInfo, 0, len(entries))
 	now := time.Now().Unix()
 	for _, entry := range entries {

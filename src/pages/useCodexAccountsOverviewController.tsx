@@ -8,11 +8,8 @@ import { summarizeCodexQuotaErrorMessage } from "../utils/codexQuotaError";
 import { buildCodexAccountPresentation } from "../presentation/platformAccountPresentation";
 import { buildCodexAccountWindowStatQueries, formatCodexWindowStatsText, type CodexWindowStats } from "../utils/codexWindowStats";
 import { type CodexLaunchPreviewAction, type CodexLaunchPreviewSummary } from "../components/codex/CodexLaunchPreviewModal";
-import {
-  CODEX_SPEED_DESCRIPTION,
-  CodexSpeedSelect,
-} from "../components/codex/CodexSpeedSelect";
-import { CodexImageModelConfig } from "../components/CodexImageModelConfig";
+import { CodexImageModelSelect } from "../components/CodexImageModelConfig";
+import { useCodexImageForwardConfig } from "../components/CodexImageForwardConfig";
 import { useEscClose } from "../hooks/useEscClose";
 import { useEnterConfirm } from "../hooks/useEnterConfirm";
 import type { CodexAccount } from "../types/codex";
@@ -32,7 +29,6 @@ export function useCodexAccountsOverviewController(context: Pick<ReturnType<type
   | "activeTab"
   | "addingLocalAccessAccountId"
   | "apiKeyUsageMap"
-  | "apiServiceAppSpeed"
   | "batchDeleteBusy"
   | "batchDeleteJob"
   | "batchDeleteRefreshedCompletedRef"
@@ -61,7 +57,6 @@ export function useCodexAccountsOverviewController(context: Pick<ReturnType<type
   | "groupDeleteConfirm"
   | "groupFilter"
   | "handleAddLocalAccessAccount"
-  | "handleApiServiceAppSpeedChange"
   | "handleExportByIds"
   | "handleHideLocalAccessEntry"
   | "handleKillLocalAccessPort"
@@ -99,7 +94,6 @@ export function useCodexAccountsOverviewController(context: Pick<ReturnType<type
   | "refreshApiKeyUsage"
   | "refreshing"
   | "refreshingSubscriptionAccountId"
-  | "renderAccountSpeedSelect"
   | "resettingResetCreditAccountId"
   | "resolveAccountMeta"
   | "resolveApiKeyDisplayText"
@@ -111,7 +105,6 @@ export function useCodexAccountsOverviewController(context: Pick<ReturnType<type
   | "resolveSingleExportBaseName"
   | "resolveSubscriptionPresentation"
   | "resolveUsageProviderForApiKeyAccount"
-  | "savingAppSpeedId"
   | "searchQuery"
   | "selected"
   | "sessionWindowStats"
@@ -152,7 +145,6 @@ export function useCodexAccountsOverviewController(context: Pick<ReturnType<type
     activeTab,
     addingLocalAccessAccountId,
     apiKeyUsageMap,
-    apiServiceAppSpeed,
     batchDeleteBusy,
     batchDeleteJob,
     batchDeleteRefreshedCompletedRef,
@@ -181,7 +173,6 @@ export function useCodexAccountsOverviewController(context: Pick<ReturnType<type
     groupDeleteConfirm,
     groupFilter,
     handleAddLocalAccessAccount,
-    handleApiServiceAppSpeedChange,
     handleExportByIds,
     handleHideLocalAccessEntry,
     handleKillLocalAccessPort,
@@ -219,7 +210,6 @@ export function useCodexAccountsOverviewController(context: Pick<ReturnType<type
     refreshApiKeyUsage,
     refreshing,
     refreshingSubscriptionAccountId,
-    renderAccountSpeedSelect,
     resettingResetCreditAccountId,
     resolveAccountMeta,
     resolveApiKeyDisplayText,
@@ -231,7 +221,6 @@ export function useCodexAccountsOverviewController(context: Pick<ReturnType<type
     resolveSingleExportBaseName,
     resolveSubscriptionPresentation,
     resolveUsageProviderForApiKeyAccount,
-    savingAppSpeedId,
     searchQuery,
     selected,
     sessionWindowStats,
@@ -269,6 +258,7 @@ export function useCodexAccountsOverviewController(context: Pick<ReturnType<type
   const overviewCurrentAccountId = localAccessLaunchCurrent
       ? null
       : (currentAccount?.id ?? null);
+
   
     useEffect(() => {
       if (activeTab !== "overview") {
@@ -710,16 +700,7 @@ export function useCodexAccountsOverviewController(context: Pick<ReturnType<type
         });
       }
 
-      const speedDescription = CODEX_SPEED_DESCRIPTION[account.app_speed ?? "standard"] ??
-        CODEX_SPEED_DESCRIPTION.standard;
-
       actions.push(
-        {
-          id: "speed",
-          label: t("codex.speed.title", "速度"),
-          description: t(speedDescription.key, speedDescription.fallback),
-          control: renderAccountSpeedSelect(account),
-        },
         {
           id: "tags",
           label: t("accounts.editTags", "编辑标签"),
@@ -810,6 +791,34 @@ export function useCodexAccountsOverviewController(context: Pick<ReturnType<type
       );
     };
   
+    // API 服务启动预览的「启用 GPT 生图」行：与 DeepSeek 行共用同一套状态与控件，
+    // 左侧展示已选账号、右侧展示启用开关，避免弹框内出现两套布局。
+    const localAccessImageForward = useCodexImageForwardConfig({
+      accounts,
+      accountIds: localAccessCollection?.imageGenerationAccountIds,
+      disabled: localAccessRefreshing || !localAccessCollection,
+      onSave: async (accountIds) => {
+        const nextState =
+          await codexLocalAccessService.updateCodexLocalAccessImageGenerationAccounts(
+            accountIds,
+          );
+        setLocalAccessState(nextState);
+      },
+      imageModelControl: (
+        <CodexImageModelSelect
+          model={localAccessCollection?.imageGenerationModel}
+          disabled={localAccessRefreshing}
+          onSave={async (model) => {
+            const nextState =
+              await codexLocalAccessService.updateCodexLocalAccessImageGenerationModel(
+                model,
+              );
+            setLocalAccessState(nextState);
+          }}
+        />
+      ),
+    });
+
     const buildLocalAccessLaunchPreviewSummary =
       useCallback((): CodexLaunchPreviewSummary => {
         const collection = localAccessCollection;
@@ -914,22 +923,44 @@ export function useCodexAccountsOverviewController(context: Pick<ReturnType<type
       (): CodexLaunchPreviewAction[] => {
         if (!localAccessCollection) return [];
         const baseUrl = resolveLocalAccessBaseUrl() || "-";
-        const apiServiceSpeedDescription = CODEX_SPEED_DESCRIPTION[apiServiceAppSpeed] ??
-          CODEX_SPEED_DESCRIPTION.standard;
         const actions: CodexLaunchPreviewAction[] = [
           {
-            id: "image-model",
-            label: t("codex.localAccess.imageGenerationModel.label"),
-            description: localAccessCollection.imageGenerationModel || "gpt-image-2.5",
+            id: "image-forward",
+            label: t("codex.localAccess.imageForwardLabel", "启用 GPT 生图"),
+            description: t(
+              "codex.localAccess.imageForwardHint",
+              "勾选后选择 GPT 账号：生图与图片编辑请求交给所选账号执行并消耗其额度，对话请求仍按账号池调度。",
+            ),
+            meta: (
+              <>
+                {localAccessImageForward.enabled && (
+                  <div className="codex-launch-preview-tool-meta">
+                    <span className="is-enabled">
+                      {localAccessImageForward.statusText}
+                    </span>
+                    {localAccessImageForward.selectedAccounts
+                      .slice(0, 4)
+                      .map((item) => (
+                        <span key={item.id}>
+                          {item.email || item.account_name || item.id}
+                        </span>
+                      ))}
+                  </div>
+                )}
+                {localAccessImageForward.feedback}
+              </>
+            ),
             control: (
-              <CodexImageModelConfig
-                model={localAccessCollection.imageGenerationModel}
-                disabled={localAccessRefreshing}
-                onSave={async (model) => {
-                  const nextState = await codexLocalAccessService.updateCodexLocalAccessImageGenerationModel(model);
-                  setLocalAccessState(nextState);
-                }}
-              />
+              <>
+                {localAccessImageForward.renderEnableCheckbox(
+                  "codex-launch-preview-checkbox",
+                )}
+                {localAccessImageForward.renderPickButton(
+                  "btn btn-outline btn-sm codex-launch-preview-tool-action",
+                  { showIcon: false },
+                )}
+                {localAccessImageForward.overlay}
+              </>
             ),
           },
           {
@@ -984,23 +1015,6 @@ export function useCodexAccountsOverviewController(context: Pick<ReturnType<type
             onAction: async () => {
               await handleQuickRefreshLocalAccessQuota();
             },
-          },
-          {
-            id: "speed",
-            label: t("codex.speed.title", "速度"),
-            description: t(
-              apiServiceSpeedDescription.key,
-              apiServiceSpeedDescription.fallback,
-            ),
-            control: (
-              <CodexSpeedSelect
-                value={apiServiceAppSpeed}
-                onChange={handleApiServiceAppSpeedChange}
-                busy={savingAppSpeedId === CODEX_API_SERVICE_BIND_ID}
-                preferredPlacement="top"
-                ariaLabel={t("codex.speed.title", "速度")}
-              />
-            ),
           },
           {
             id: "toggle-service",

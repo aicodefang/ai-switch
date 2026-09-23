@@ -1,5 +1,7 @@
 import { Fragment, useEffect } from "react";
 import { createPortal } from "react-dom";
+import { useModalScrollLock } from "../hooks/useModalScrollLock";
+import "./CodexAccountDialogs.css";
 import { Plus, RefreshCw, Download, Upload, Trash2, X, Globe, KeyRound, Power, Copy, Check, Play, Pause, RotateCw, CircleAlert, Info, Rows3, LayoutGrid, List, Search, ArrowDownWideNarrow, ArrowUp, ArrowDown, GripVertical, Clock, Tag, Star, Eye, EyeOff, BookOpen, FileText, ExternalLink, FolderOpen, FolderPlus, ChevronRight, LogOut, Terminal, ChevronDown } from "lucide-react";
 import * as codexLocalAccessService from "../services/codexLocalAccessService";
 import { TagEditModal } from "../components/TagEditModal";
@@ -16,7 +18,11 @@ import { QuickSettingsPopover } from "../components/QuickSettingsPopover";
 import { MultiSelectFilterDropdown } from "../components/MultiSelectFilterDropdown";
 import { SingleSelectFilterDropdown } from "../components/SingleSelectFilterDropdown";
 import { SingleSelectDropdown } from "../components/SingleSelectDropdown";
-import { CODEX_API_PROVIDER_CUSTOM_ID, CODEX_VISIBLE_PROVIDER_PRESETS, COCKPIT_API_PROVIDER_ID } from "../utils/codexProviderPresets";
+import {
+  CODEX_API_PROVIDER_CUSTOM_ID,
+  CODEX_VISIBLE_PROVIDER_PRESETS,
+  COCKPIT_API_PROVIDER_ID,
+} from "../utils/codexProviderPresets";
 import { formatCodexQuotaPoolPercent, formatCodexQuotaPoolWindowLabel } from "../utils/codexQuotaPool";
 import { getCodexLocalAccessRiskNoticeConfirmLabel } from "../utils/codexLocalAccessRiskNotice";
 import { getMfaOtpToken } from "../utils/mfaVault";
@@ -163,6 +169,7 @@ export function CodexAccountsOverviewPanel(props: CodexAccountsViewProps) {
     handlePendingOAuthEmailInputChange,
     handleQuickAddAccountsToGroup,
     handleRecoverLocalAccessAccounts,
+    handleCreateGrokUpstreamAccount,
     handleRefreshAccountNoteMailPreview,
     handleRefreshAll,
     handleRemoveFromGroup,
@@ -355,6 +362,7 @@ export function CodexAccountsOverviewPanel(props: CodexAccountsViewProps) {
     window.addEventListener(PELICAN_GROUPS_CHANGED, reload);
     return () => window.removeEventListener(PELICAN_GROUPS_CHANGED, reload);
   }, [reloadCodexGroups]);
+  useModalScrollLock(Boolean(quickSwitchAccountId || editingApiKeyCredentialsId));
   return (
         <>
           {message && (
@@ -566,7 +574,7 @@ export function CodexAccountsOverviewPanel(props: CodexAccountsViewProps) {
             <div className="toolbar-right">
               <button
                 className="btn btn-primary icon-only"
-                onClick={() => openCodexAddModal("oauth")}
+                onClick={() => openCodexAddModal("tempLogin")}
                 title={t("common.shared.addAccount", "添加账号")}
               >
                 <Plus size={14} />
@@ -688,7 +696,7 @@ export function CodexAccountsOverviewPanel(props: CodexAccountsViewProps) {
               >
                 <button
                   className="btn btn-primary"
-                  onClick={() => openCodexAddModal("oauth")}
+                  onClick={() => openCodexAddModal("tempLogin")}
                 >
                   <Plus size={16} />
                   {t("common.shared.addAccount", "添加账号")}
@@ -1227,10 +1235,10 @@ export function CodexAccountsOverviewPanel(props: CodexAccountsViewProps) {
 
           {<CodexAddAccountDialog {...props} />}
 
-          {quickSwitchAccountId && (
-            <div className="modal-overlay">
+          {quickSwitchAccountId && createPortal(
+            <div className="modal-overlay codex-account-dialog-overlay">
               <div
-                className="modal-content codex-add-modal codex-api-key-edit-modal"
+                className="modal-content codex-add-modal codex-api-key-edit-modal codex-account-dialog"
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="modal-header">
@@ -1368,7 +1376,9 @@ export function CodexAccountsOverviewPanel(props: CodexAccountsViewProps) {
                       </div>
                     )}
 
-                    <div className="api-key-edit-actions">
+                  </div>
+                </div>
+                    <div className="modal-footer api-key-edit-actions">
                       <button
                         className="btn btn-secondary"
                         onClick={() => {
@@ -1394,18 +1404,17 @@ export function CodexAccountsOverviewPanel(props: CodexAccountsViewProps) {
                           : t("codex.quickSwitch.apply", "立即切换")}
                       </button>
                     </div>
-                  </div>
-                </div>
               </div>
-            </div>
+            </div>,
+            document.body,
           )}
 
 
 
-          {editingApiKeyCredentialsId && (
-            <div className="modal-overlay">
+          {editingApiKeyCredentialsId && createPortal(
+            <div className="modal-overlay codex-account-dialog-overlay">
               <div
-                className="modal-content codex-add-modal codex-api-key-edit-modal codex-provider-modal"
+                className="modal-content codex-add-modal codex-api-key-edit-modal codex-provider-modal codex-account-dialog"
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="modal-header">
@@ -1545,12 +1554,6 @@ export function CodexAccountsOverviewPanel(props: CodexAccountsViewProps) {
                                 preset.name,
                               )}
                             </span>
-                            {preset.isPartner && (
-                              <Star
-                                size={12}
-                                className="api-provider-chip-badge"
-                              />
-                            )}
                           </button>
                         ))}
                       </div>
@@ -1863,7 +1866,9 @@ export function CodexAccountsOverviewPanel(props: CodexAccountsViewProps) {
                         )}
                       </>
                     )}
-                    <div className="api-key-edit-actions">
+                  </div>
+                </div>
+                    <div className="modal-footer api-key-edit-actions">
                       <button
                         className="btn btn-secondary"
                         onClick={closeApiKeyCredentialsModal}
@@ -1885,10 +1890,9 @@ export function CodexAccountsOverviewPanel(props: CodexAccountsViewProps) {
                           : t("common.save")}
                       </button>
                     </div>
-                  </div>
-                </div>
               </div>
-            </div>
+            </div>,
+            document.body,
           )}
 
           {showCustomSortModal && (
@@ -3516,6 +3520,12 @@ export function CodexAccountsOverviewPanel(props: CodexAccountsViewProps) {
               handleRecoverLocalAccessAccounts([accountId])
             }
             onRecoverAll={handleRecoverLocalAccessAccounts}
+            onReauthorize={(accountId) => {
+              const account = accounts.find((item) => item.id === accountId);
+              if (!account) return;
+              setShowLocalAccessHealthModal(false);
+              openCodexAddModal("tempLogin", account);
+            }}
           />
 
           <CodexLocalAccessModal
@@ -3528,6 +3538,7 @@ export function CodexAccountsOverviewPanel(props: CodexAccountsViewProps) {
             accounts={accounts}
             accountsLoaded={store.accountsLoaded}
             accountGroups={codexGroups}
+            onAddGrokMember={handleCreateGrokUpstreamAccount}
             memberView={
               localAccessModalMode === "members"
                 ? {
@@ -3590,6 +3601,11 @@ export function CodexAccountsOverviewPanel(props: CodexAccountsViewProps) {
                 .updateCodexLocalAccessImageGenerationModel(model)
                 .then(setLocalAccessState)
             }
+            onUpdateImageGenerationAccounts={(accountIds) =>
+              codexLocalAccessService
+                .updateCodexLocalAccessImageGenerationAccounts(accountIds)
+                .then(setLocalAccessState)
+            }
             onUpdateUpstreamProxyConfig={
               handleUpdateLocalAccessUpstreamProxyConfig
             }
@@ -3643,6 +3659,7 @@ export function CodexAccountsOverviewPanel(props: CodexAccountsViewProps) {
             sourceGroupId={activeGroupId ?? undefined}
             onAdded={reloadCodexGroups}
           />
+
         </>
       );
 }

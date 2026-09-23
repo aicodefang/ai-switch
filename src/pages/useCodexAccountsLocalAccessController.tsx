@@ -14,6 +14,10 @@ import { CODEX_PLAN_BADGE_STYLE_CHANGED_EVENT, getCodexPlanBadgeStyle, type Code
 import { invoke } from "@tauri-apps/api/core";
 import { confirm as confirmDialog } from "@tauri-apps/plugin-dialog";
 import { DEFAULT_CODEX_INSTANCE_ID } from "../components/codex/CodexLaunchPreviewModal";
+import {
+  CODEX_LAUNCH_PREVIEW_API_SERVICE_CARD_KEY,
+  persistCodexLaunchPreviewLastInstanceId,
+} from "../utils/codexLaunchPreviewInstancePreference";
 import type { MultiSelectFilterOption } from "../components/MultiSelectFilterDropdown";
 import type { SingleSelectFilterOption } from "../components/SingleSelectFilterDropdown";
 import type { CodexAccount } from "../types/codex";
@@ -368,9 +372,9 @@ export function useCodexAccountsLocalAccessController(context: Pick<ReturnType<t
                 type="button"
                 className="btn btn-sm btn-outline quota-error-action"
                 onClick={onReauthorize}
-                title={t("common.shared.addModal.oauth", "OAuth 授权")}
+                title={t("common.reauthorize", "重新授权")}
               >
-                {t("common.shared.addModal.oauth", "OAuth 授权")}
+                {t("common.reauthorize", "重新授权")}
               </button>
             )}
           </div>
@@ -798,7 +802,15 @@ export function useCodexAccountsLocalAccessController(context: Pick<ReturnType<t
       localAccessQuotaPoolSummary.visiblePlans.length -
         localAccessQuotaPreviewItems.length,
     );
-    const overviewAccounts = accounts;
+    // Grok 供应商账号在「添加至 API 服务」里以 Grok 平台行呈现，
+    // 不在账号总览里单独占一行（成员弹框仍拿到完整账号列表）。
+    const overviewAccounts = useMemo(
+      () =>
+        accounts.filter(
+          (account) => !account.upstream_grok_account_id?.trim(),
+        ),
+      [accounts],
+    );
     const localAccessScope = localAccessCollection?.accessScope ?? "localhost";
     const localAccessScopeLabel =
       localAccessScope === "lan"
@@ -1136,7 +1148,7 @@ export function useCodexAccountsLocalAccessController(context: Pick<ReturnType<t
           setAddingLocalAccessAccountId(null);
         }
       },
-      [addingLocalAccessAccountId, ensureLocalAccessEntryVisible, setMessage, t],
+      [accounts, addingLocalAccessAccountId, ensureLocalAccessEntryVisible, setMessage, t],
     );
   
     const handleRemoveLocalAccessAccount = useCallback(
@@ -1933,6 +1945,10 @@ export function useCodexAccountsLocalAccessController(context: Pick<ReturnType<t
   
     const handleExecuteLocalAccessLaunchPreview =
       useCallback(async (): Promise<boolean> => {
+        persistCodexLaunchPreviewLastInstanceId(
+          CODEX_LAUNCH_PREVIEW_API_SERVICE_CARD_KEY,
+          launchPreviewInstanceId,
+        );
         const activateSelectedTarget = async () => {
           if (launchPreviewInstanceId !== DEFAULT_CODEX_INSTANCE_ID) {
             await codexInstanceStore.updateInstance({

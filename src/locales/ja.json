@@ -86,6 +86,7 @@
     "viewError": "エラーを見る"
   },
   "common": {
+    "retry": "再試行",
     "quotaRefreshScheduler": {
       "busy": "更新キューが混雑しています。しばらくしてから再試行してください。",
       "timeout": "使用枠の更新がタイムアウトしました。再試行してください。",
@@ -123,6 +124,8 @@
     "windowsOperation": {
       "title": "Windows 操作が完了していません",
       "accessDeniedDescription": "Windows により操作が拒否されました。対象が高い権限で実行中か、保護された場所にある可能性があります。",
+      "storeLaunchBlockedDescription": "Windows は現在設定されている Codex クライアントを実行できませんでした。ストア版のフォルダーが更新で置き換わったか、実行が許可されていない可能性があります。誤ったアカウントで開かないよう、直接起動をブロックしました。「パスの再検出と再試行」を実行し、それでも失敗する場合はこのインスタンスの起動方式を CLI に変更してください。",
+      "repairPath": "パスを再検出して再試行",
       "fileInUseDescription": "対象ファイルは別のプログラムで使用中です。そのプログラムを閉じて再試行してください。",
       "programNotFoundDescription": "操作に必要なプログラムが見つかりません。インストール状態または設定パスを確認してください。",
       "portDeniedDescription": "Windows がポートへのアクセスをブロックしました。システムポリシーまたは別のプログラムが使用している可能性があります。",
@@ -362,7 +365,11 @@
     "deleteTagWarning": "すべてのアカウントからタグを削除してもよろしいですか？",
     "expand": "展開",
     "processing": "処理中...",
-    "selectAll": "すべて選択"
+    "selectAll": "すべて選択",
+    "quota": {
+      "weeklyWindow": "週間"
+    },
+    "optional": "（任意）"
   },
   "nav": {
     "overview": "Antigravity IDE​",
@@ -610,7 +617,7 @@
         "summary": "プレフィックスのないモデルは現在のサブスクリプションを使用し、cpa/gpt-5.5 などのプレフィックス付きモデルはサードパーティ API に転送されます。どちらもローカル ルーティング サービスに依存します。",
         "rowSummary": "プレフィックスのないモデルは現在のサブスクリプションを使用し、cpa/gpt-5.5 などのプレフィックス付きモデルはサードパーティ API に転送されます。どちらもローカル ルーティング サービスに依存します。",
         "confirmEnableTitle": "サードパーティ API ルーティングを有効にしますか？",
-        "confirmEnableMessage": "Codex モデルのリクエストはローカルの Cockpit Tools サービスを経由してルーティングされます。サービスが実行されていない場合、サブスクリプション モデルとサードパーティ モデルの両方が利用できなくなる可能性があります。保存時にログイン時起動が有効になります。\n\nルーティングを有効にしますか？",
+        "confirmEnableMessage": "Codex モデルのリクエストはローカルの Cockpit Tools サービスを経由してルーティングされます。サービスが実行されていない場合、サブスクリプション モデルとサードパーティ モデルの両方が利用できなくなる可能性があります。\n\nルーティングを有効にしますか？",
         "confirmEnableAction": "有効にする",
         "confirmDisableTitle": "サードパーティ API ルーティングを無効にしますか？",
         "confirmDisableMessage": "この変更が有効になると、ローカル ゲートウェイが停止し、ネイティブのサブスクリプション アクセスが復元され、サードパーティ モデルは利用できなくなります。\n\nルーティングを無効にしますか？",
@@ -841,10 +848,11 @@
       "codexSyncWsl": "Codex を WSL に同期",
       "codexSyncWslDesc": "既定の Codex アカウントを切り替えた後、auth.json と config.toml も WSL 内の Codex ディレクトリへ書き込みます。",
       "codexAppUiInjection": "API サービスのクォータ",
-      "codexAppUiInjectionDesc": "Codex インスタンスの再起動後、入力欄の下に Cockpit Tools API サービスのアカウント数、週間クォータ、5 時間クォータを表示します。DeepSeek アカウントをバインドしたインスタンスでは、代わりにそのアカウントの残高を表示します。Cockpit Tools をバックグラウンドで起動したままにしてください。完全に終了した場合やネットワークを利用できない場合は更新されません。",
+      "codexAppUiInjectionDesc": "Codex インスタンスの再起動後、入力欄の下のクォータバッジは選択中のモデルに合わせて切り替わります。DeepSeek はアカウント残高、Grok は Grok クォータ、GPT は週間クォータと 5 時間クォータを表示します。Cockpit Tools をバックグラウンドで起動したままにしてください。完全に終了した場合やネットワークを利用できない場合は更新されません。",
       "codexAppUiInjectionPoolLabel": "アカウント",
       "codexAppUiInjectionWeeklyLabel": "週",
       "codexAppUiInjectionFiveHourLabel": "5時間",
+      "codexAppUiInjectionMissingLabel": "—",
       "codexWslConfigDir": "WSL Codex ディレクトリ",
       "codexWslConfigDirDesc": "WSL 内の .codex ディレクトリを入力します。\\\\wsl.localhost\\ のパスに対応しています。",
       "codexWslConfigDirPlaceholder": "例: \\\\wsl.localhost\\Ubuntu-24.04\\home\\user\\.codex",
@@ -2189,10 +2197,18 @@
     "refreshAllSuccess": "更新完了、{{count}} アカウント成功",
     "refreshAllPartialFailed": "更新完了、{{success}} / {{total}} アカウント成功、一部失敗",
     "launchPreview": {
+      "configLoading": "インスタンス設定を読み込み中…",
+      "configRefreshing": "インスタンス設定を確認中です。既存の内容は引き続き表示できます。",
+      "configLoadTimeout": "インスタンス設定の読み込みがタイムアウトしました。再試行してください。",
+      "configChanged": "インスタンス設定が別の場所で変更されました。保存または起動する前に再読み込みしてください。",
       "accessModeTitle": "起動方式",
       "prosLabel": "長所：",
       "consLabel": "短所：",
-      "accessModeDescription": "DeepSeek の起動方式を選択します。モデル切り替え、OAuth、画像転送の可否が異なります。",
+      "accessModeDescription": "このプロバイダーの起動方式を選択します。方式によりモデル切り替え、OAuth、画像生成の転送が異なります。",
+      "accessModeApiServiceFixed": "API サービスは常にゲートウェイモードで動作し、変更できません。",
+      "imageGenApiServiceFixed": "API サービスの画像生成転送は「API サービス → 設定」で一括管理します。ここは現在の状態のみを表示します。",
+      "oauthBindingApiServiceHint": "API サービスの OAuth 連携は「API サービス → 設定」で一括管理します。ここは入口の状態のみを表示します。",
+      "oauthBindingApiServiceManaged": "API サービスのアカウントプールで管理",
       "accessModeGatewayPros": "1：Codex 内でモデルを切り替えできます\n2：OAuth アカウントを紐付け、遠端圧縮やブラウザ操作などの OAuth 機能を利用できます\n3：GPT アカウントを設定して画像生成を転送できます",
       "accessModeGatewayCons": "1：インスタンス内蔵ゲートウェイが必要で、直連より少し遅くなります",
       "accessModeDirectPros": "1：ゲートウェイを通らず最速です",
@@ -2355,6 +2371,7 @@
       "apiKey": "キー",
       "statusRunning": "稼働中",
       "statusStopped": "停止",
+      "internalSchedulerLabel": "内部スケジューラ",
       "statusDisabled": "無効",
       "emptyMembers": "この集合にはまだアカウントがありません",
       "footerHint": "アクセス範囲：{{scope}}",
@@ -2385,8 +2402,6 @@
         "restrictFreeToggle": "Freeアカウントを制限",
         "sessionAffinityConfirmTitle": "セッション固定を有効にしますか？",
         "sessionAffinityDescription": "有効にすると、同じ会話では可能な限り同じアカウントを使い続けます。利用できない場合はルーティングに従って切り替わり、有効期限後は再選択されます。",
-        "chatApiKeyUnsupported": "Chat Completionsは非対応",
-        "deepseekUnsupported": "DeepSeekは未対応",
         "pendingOauthUnsupported": "未認可は追加不可",
         "freeNoticeRestricted": "Freeアカウントは制限中です。選択するにはこの設定をオフにしてください。",
         "freeNoticeUnstable": "Freeアカウントのプロキシは不安定な場合があります。注意して使用してください。",
@@ -2438,6 +2453,9 @@
       "summaryMeta": "{{count}} 件のアカウント · {{scope}}",
       "summaryMetaUnconfigured": "未設定 · {{scope}}",
       "memberTitle": "集合メンバー",
+      "memberPlatformLabel": "プラットフォーム",
+      "memberPlatformAll": "すべてのプラットフォーム",
+      "memberPlatformGrok": "Grok プラットフォームのアカウント",
       "imagePolicy": {
         "label": "画像ポリシー",
         "inherit": "画像：自動",
@@ -2622,6 +2640,8 @@
       "requestLogSuccess": "成功",
       "requestLogFailed": "失敗",
       "requestLogTokens": "{{value}} トークン",
+      "imageForwardLabel": "GPT 画像生成を有効化",
+      "imageForwardHint": "有効化して GPT アカウントを選択すると、画像生成と画像編集のリクエストは選択したアカウントで実行され、その枠を消費します。チャットのリクエストは引き続きアカウントプールで処理されます。",
       "imageGenerationMode": {
         "enabled": "有効",
         "imagesOnly": "画像のみ",
@@ -2691,7 +2711,8 @@
           "recover": "復旧",
           "recovering": "復旧中…",
           "recoverAll": "すべて復旧",
-          "resyncPool": "プールを再同期"
+          "resyncPool": "プールを再同期",
+          "reauthorizeHint": "アカウントの認証情報が無効になっています。公式ログインで再認証してください。スケジューラのリセットだけでは復旧しません。"
         }
       },
       "testChatModel": "モデル",
@@ -2710,8 +2731,41 @@
       "desc": "~/.codex/auth.json から現在ログイン中のアカウントをインポート",
       "import": "ローカルアカウント取得"
     },
+    "tempLogin": {
+      "tab": "公式ログイン",
+      "desc": "ログインはすべて公式デスクトップクライアント内で完了します。認証URLは公式クライアントが生成し、認証コールバックとトークン交換も公式クライアントが処理します。Cockpit は認証コールバックには関与せず、公式クライアントがログイン情報を保存した後に読み取って取り込むだけです。",
+      "note": "一時プロファイルはアプリデータディレクトリ内の空フォルダーに作成され、アカウントの読み取り後にクライアントの実行ディレクトリとキーチェーン項目ごと削除されます。既定インスタンスとマルチ起動インスタンスには影響しません。",
+      "start": "公式クライアントを開いてログイン",
+      "cancel": "ログインを中止",
+      "cancelling": "公式ログインを中止しています…",
+      "waitingHint": "公式クライアントでログインを完了してください。ログイン情報を検出すると自動的に閉じます（最長 10 分）。",
+      "cancelled": "公式ログインを中止し、一時プロファイルを削除しました。",
+      "failed": "公式ログインに失敗しました：{{error}}",
+      "success": "アカウントを取得しました：{{email}}",
+      "intercept": {
+        "toggle": "ブラウザーへの遷移を止めて認証URLをここに表示",
+        "hint": "有効にすると、公式クライアントで「続行」を押してもブラウザーは開かず、公式クライアントが生成した認証URLをここに表示してコピーできるようにします。任意のブラウザーでログインしたあとの認証コールバックとトークン交換は引き続き公式デスクトップクライアントが処理し、Cockpit は認証に関与しません。無効にすると公式の標準動作になります。"
+      },
+      "authUrl": {
+        "label": "認証URL（公式クライアントが生成）",
+        "open": "既定のブラウザーで開く",
+        "openFailed": "認証URLを開けませんでした：{{error}}",
+        "hint": "URLは公式クライアントが生成したもので、この端末のブラウザーでのみ開けます。サインインが終わるまで公式ウィンドウは閉じないでください。",
+        "unavailable": "今回、認証URLを取得できませんでした。公式クライアントが通常どおりブラウザーを開くので、そちらでサインインしてください。"
+      },
+      "phase": {
+        "prepare": "一時プロファイルを準備",
+        "launch": "公式クライアントを起動",
+        "wait": "ログイン完了を待機",
+        "import": "ログイン情報を読み取り",
+        "close": "公式クライアントを終了",
+        "clean": "一時プロファイルを削除"
+      }
+    },
     "import": {
       "localDesc": "ローカルでログイン済みのセッションから Codex アカウントをインポート。",
+      "localInstanceTitle": "インスタンスを選択",
+      "localInstanceDesc": "複数の Codex インスタンスがあります。ローカルアカウントを取得するインスタンスを選択してください：",
       "importing": "ローカルアカウントをインポート中...",
       "successMsg": "インポート成功: {{email}}"
     },
@@ -2752,6 +2806,7 @@
       "resetCreditGrantedAt": "付与",
       "resetCreditExpiresAt": "期限",
       "windowAccountCostHint": "アカウント課金（モデル価格の概算）",
+      "windowEstimatedFullCostHint": "使用済み割合から換算し、このウィンドウを使い切った場合のアカウント課金の目安",
       "windowUserCostHint": "ユーザー課金",
       "windowWeeks": "{{count}}週クォータ",
       "windowDays": "{{count}}日クォータ",
@@ -2846,7 +2901,7 @@
       "heroSubtitle": "OAuth の Codex アカウント向けに時間指定のウェイクアップタスクを作成し、その場でテストを実行し、すべてのトリガーを一か所で確認できます。",
       "runtimeReady": "Codex CLI は利用可能です",
       "runtimeMissing": "Codex CLI が必要です",
-      "runtimeCardTitle": "Codex CLI 環境",
+      "runtimeCardTitle": "実行方法",
       "runtimeUnknownPath": "パスが検出されていません",
       "runtimeUnchecked": "最新状態を取得するには再確認してください",
       "runtimeVersion": "バージョン {{version}}",
@@ -3025,11 +3080,7 @@
       "runtimeConfigCodexCliPlaceholder": "例: /opt/homebrew/bin/codex",
       "runtimeConfigNodeLabel": "node パス",
       "runtimeConfigNodePlaceholder": "例: /opt/homebrew/bin/node",
-      "runtimeConfigApplyHint": "変更後に「CLI を再チェック」をクリックすると保存され、すぐ反映されます。",
-      "officialChatRuntimeTitle": "公式直接接続",
-      "officialChatRuntimePath": "ChatGPT 公式 Codex チャット",
-      "officialChatRuntimeSource": "公式直接接続",
-      "officialChatRuntimeMessage": "OAuth アカウントで直接対話"
+      "runtimeConfigApplyHint": "変更後に「CLI を再チェック」をクリックすると保存され、すぐ反映されます。"
     },
     "sessionManager": {
       "title": "セッション管理",
@@ -3483,6 +3534,9 @@
         }
       }
     },
+    "grokAdd": {
+      "tab": "Grok アカウント"
+    },
     "deepSeek": {
       "start": {
         "title": "DeepSeek を起動",
@@ -3518,6 +3572,13 @@
       }
     },
     "modelProviders": {
+      "keyModels": {
+        "title": "Key のモデル",
+        "override": "個別設定",
+        "help": "オフの場合はプロバイダーのモデル設定を継承します。オンの場合は、この Key のみ独自のカタログと機能を使用します。",
+        "saved": "Key のモデル設定を保存しました。実行中のクライアントを再起動すると反映されます。",
+        "inherit": "プロバイダーを継承"
+      },
       "tab": "モデルプロバイダー",
       "desc": "モデルプロバイダーと複数の API キーをまとめて管理し、Codex の API キーアカウントを追加するときにそのまま再利用できます。",
       "add": "プロバイダーを追加",
@@ -3526,6 +3587,7 @@
       "emptyTitle": "モデルプロバイダーはまだありません",
       "emptyDesc": "右上の「プロバイダーを追加」をクリックして開始します。",
       "baseUrl": "ベース URL",
+      "customEndpointHint": "カスタムエンドポイントを使用中：このアドレスは「{{preset}}」の公式エンドポイントではありません。サードパーティ互換のエンドポイントとして扱うため、プロトコルとモデルカタログは上流に合わせて設定してください。",
       "modelCatalog": "モデル",
       "modelCatalogEmpty": "モデルカタログ未設定",
       "gatewayHint": "サードパーティプロバイダーは、インスタンス分離とプロトコル変換のためローカルゲートウェイ経由で起動します。公式 OpenAI プロバイダーは直接接続のままです。",
@@ -3536,6 +3598,8 @@
       "unnamedKey": "名称未設定のキー",
       "createTitle": "モデルプロバイダーを追加",
       "editTitle": "モデルプロバイダーを編集",
+      "copySuffix": "コピー",
+      "duplicate": "プロバイダーを複製（キーなしの新規コピー）",
       "existingApiKeys": "既存の API キー",
       "fields": {
         "name": "プロバイダー名",
@@ -3584,7 +3648,8 @@
         "responses": "Responses ネイティブ",
         "chatCompletions": "Chat Completions プロトコル",
         "deepseekResponsesHint": "DeepSeek を起動してゲートウェイまたは公式ダイレクト接続を選択し、Flash か Pro を選びます。ゲートウェイは Codex 内にモデルを表示します。ダイレクト接続はゲートウェイを経由しません。",
-        "deepseekChatHint": "DeepSeek Chat Completions はレガシーパスでローカルゲートウェイブリッジを使用します。公式の Codex ツール動作が必要な場合は Responses を選択してください。"
+        "deepseekChatHint": "DeepSeek Chat Completions はレガシーパスでローカルゲートウェイブリッジを使用します。公式の Codex ツール動作が必要な場合は Responses を選択してください。",
+        "deepseekThirdPartyHint": "このアドレスは DeepSeek 公式のエンドポイントではないため、サードパーティ互換として扱います。モデルカタログには上流の実際のモデル ID を入力し、公式モデル名は使わないでください。"
       },
       "selectSavedProvider": "保存済みプロバイダー",
       "selectSavedApiKey": "保存済み API キー",
@@ -3806,7 +3871,17 @@
       "renameApiKeyPrompt": "API キー名を変更",
       "renameApiKeySuccess": "API キーを変更しました",
       "renameApiKeyFailed": "API キー名の変更に失敗：{{error}}",
-      "existingApiKeysSearch": "既存 API Key を検索…"
+      "existingApiKeysSearch": "既存 API Key を検索…",
+      "copyConfig": "設定をコピー（キーなし）",
+      "copyConfigSuccess": "API キーを除いた設定をコピーしました。プロバイダー追加時に貼り付けてください。",
+      "copyConfigFailed": "設定のコピーに失敗しました：{{error}}",
+      "importConfig": "クリップボードから設定を読み込む",
+      "importConfigSuccess": "クリップボードから設定を読み込みました。API キーを入力して保存してください。",
+      "importConfigInvalid": "クリップボードに設定がありません（カードの「設定をコピー」を使用）。",
+      "importConfigFailed": "クリップボードからの読み込みに失敗しました：{{error}}",
+      "importConfigPlaceholder": "カードの「設定をコピー」を使い、内容をここに貼り付けます",
+      "importConfigAction": "設定を読み込む",
+      "importConfigFromClipboard": "クリップボードを読み取る"
     },
     "quickSwitch": {
       "action": "プロバイダーをクイック切り替え",
@@ -3987,8 +4062,6 @@
       "standardDesc": "既定の速度、通常の使用量",
       "fast": "高速",
       "fastDesc": "1.5倍速、使用量が増加",
-      "ultrafast": "超高速",
-      "ultrafastDesc": "最速の応答、使用量が最大",
       "saveSuccess": "速度を更新しました",
       "saveFailed": "速度の保存に失敗しました: {{error}}"
     },
@@ -4168,7 +4241,8 @@
         "reasoningEffort": "思考強度",
         "reasoningEffortValue": "思考 {{effort}}",
         "serviceTier": "サービス階層",
-        "serviceTierValue": "階層 {{tier}}"
+        "serviceTierValue": "階層 {{tier}}",
+        "upstreamModel": "実際のモデル"
       },
       "timeouts": {
         "entryLabel": "詳細",
@@ -5410,12 +5484,6 @@
     },
     "quota": {
       "usedOfTotal": "{{used}} / {{total}}​"
-    },
-    "sessions": {
-      "title": "ローカルセッション",
-      "desc": "ローカルセッション — ローカルデータからスキャンして場所を開きます。",
-      "empty": "セッションファイルが見つかりません",
-      "open": "場所を開く"
     }
   },
   "qoder": {
@@ -6007,7 +6075,7 @@
   "apiKeyFun": {
     "eyebrow": "中継サービス",
     "title": "APIKEY.FUN リレー",
-    "description": "Cockpit 公式パートナーの中継サービスで、安定したオープンで高コストパフォーマンスな大規模モデル API 接続を提供します。Claude、OpenAI、Gemini などの主要モデルに対応し、Codex、Gemini CLI、Claude Code などの開発ツールで統一して設定できます。Cockpit 専用リンクから登録すると、チャージが永久に最大 5% 割引になります。",
+    "description": "Cockpit 公式パートナーの中継サービスで、安定したオープンで高コストパフォーマンスな大規模モデル API 接続を提供します。Claude、ChatGPT、Grok、Gemini、Zhipu GLM、Kimi、DeepSeek などの主要モデルに対応し、Codex、Gemini CLI、Claude Code などの開発ツールで統一して設定できます。Cockpit 専用リンクから登録すると、チャージが永久に最大 5% 割引になります。",
     "register": "専用登録リンク",
     "docs": "公式ドキュメント",
     "viewNow": "今すぐ見る",
@@ -6119,13 +6187,34 @@
       "addToClaudeDesktop": "Claude に追加",
       "addToClaudeCli": "Claude CLI に追加",
       "codexShort": "Codex",
-      "claudeShort": "Claude CLI"
+      "claudeShort": "Claude CLI",
+      "deployToCodex": "Codex へクイック展開",
+      "deploying": "モデルを取得中…",
+      "deploySuccess": "Codex に展開しました：モデル {{count}} 件",
+      "deployFailed": "展開に失敗しました：{{error}}",
+      "useKey": "キーを使用"
     },
     "prefill": {
       "claudeDesktopReady": "APIKEY.FUN の設定を入力しました。Claude への追加を確認してください。"
     },
     "copyKey": "Copy Key​",
-    "clearKey": "Clear input​"
+    "clearKey": "Clear input​",
+    "table": {
+      "name": "名前",
+      "usage": "使用量",
+      "status": "状態",
+      "createdAt": "追加日時",
+      "actions": "操作",
+      "statusOk": "利用可能",
+      "statusBad": "異常",
+      "statusUnknown": "未確認"
+    },
+    "config": {
+      "title": "API キーを使用",
+      "family": "グループ",
+      "platform": "現在のシステム",
+      "unsupportedGroup": "このグループにはワンクリック書き込みできるクライアントがまだありません。"
+    }
   },
   "grok": {
     "search": "Grok CLI アカウントを検索...",

@@ -86,6 +86,7 @@
     "viewError": "عرض الخطأ"
   },
   "common": {
+    "retry": "إعادة المحاولة",
     "quotaRefreshScheduler": {
       "busy": "قائمة التحديث ممتلئة. حاول بعد قليل.",
       "timeout": "انتهت مهلة تحديث الحصة. حاول مجددًا.",
@@ -123,6 +124,8 @@
     "windowsOperation": {
       "title": "لم تكتمل عملية Windows",
       "accessDeniedDescription": "رفض Windows هذه العملية. قد يعمل البرنامج الهدف بصلاحيات أعلى أو يوجد في موقع محمي.",
+      "storeLaunchBlockedDescription": "تعذّر على Windows تشغيل عميل Codex المهيأ: قد يكون مجلد المتجر قد استُبدل بتحديث أو لم يعد يسمح بالتشغيل. تم منع التشغيل المباشر لتجنّب فتح الحساب الخطأ. استخدم «إعادة اكتشاف المسار والمحاولة»؛ وإذا استمر الفشل فبدّل هذا المثيل إلى وضع CLI.",
+      "repairPath": "إعادة اكتشاف المسار والمحاولة",
       "fileInUseDescription": "الملف الهدف مستخدم بواسطة برنامج آخر. أغلق البرنامج ثم أعد المحاولة.",
       "programNotFoundDescription": "تعذر على Windows العثور على البرنامج المطلوب. تحقق من التثبيت أو المسار المحدد.",
       "portDeniedDescription": "منع Windows الوصول إلى المنفذ. قد تستخدمه سياسة النظام أو برنامج آخر.",
@@ -362,7 +365,11 @@
     "deleteTagWarning": "هل أنت متأكد من حذف هذا الوسم من جميع الحسابات؟",
     "expand": "توسيع",
     "processing": "جارٍ المعالجة...",
-    "selectAll": "تحديد الكل"
+    "selectAll": "تحديد الكل",
+    "quota": {
+      "weeklyWindow": "أسبوع"
+    },
+    "optional": "(اختياري)"
   },
   "floatingCard": {
     "selectPlatform": "تبديل المنصة",
@@ -657,7 +664,7 @@
         "summary": "تستخدم النماذج بدون بادئة الاشتراك الحالي؛ وتتم إعادة توجيه النماذج ذات البادئة مثل cpa/gpt-5.5 إلى واجهة برمجة تطبيقات تابعة لجهة خارجية. يعتمد كلاهما على خدمة التوجيه المحلية.",
         "rowSummary": "تستخدم النماذج بدون بادئة الاشتراك الحالي؛ وتتم إعادة توجيه النماذج ذات البادئة مثل cpa/gpt-5.5 إلى واجهة برمجة تطبيقات تابعة لجهة خارجية. يعتمد كلاهما على خدمة التوجيه المحلية.",
         "confirmEnableTitle": "هل تريد تمكين توجيه واجهة برمجة تطبيقات الطرف الثالث؟",
-        "confirmEnableMessage": "سيتم توجيه طلبات نموذج Codex عبر خدمة Cockpit Tools المحلية. إذا كانت الخدمة لا تعمل، فقد لا تتوفر نماذج الاشتراك ونماذج الطرف الثالث. سيتم تمكين التشغيل عند تسجيل الدخول عند الحفظ.\n\nهل تريد تمكين التوجيه؟",
+        "confirmEnableMessage": "سيتم توجيه طلبات نموذج Codex عبر خدمة Cockpit Tools المحلية. إذا كانت الخدمة لا تعمل، فقد لا تتوفر نماذج الاشتراك ونماذج الطرف الثالث.\n\nهل تريد تمكين التوجيه؟",
         "confirmEnableAction": "تمكين",
         "confirmDisableTitle": "هل تريد تعطيل توجيه واجهة برمجة تطبيقات الطرف الثالث؟",
         "confirmDisableMessage": "بعد سريان هذا التغيير، سيتم إيقاف البوابة المحلية، واستعادة الوصول المباشر للاشتراك الرسمي، ولن تتوفر نماذج الطرف الثالث.\n\nهل تريد تعطيل التوجيه؟",
@@ -884,10 +891,11 @@
       "codexSyncWsl": "مزامنة Codex مع WSL",
       "codexSyncWslDesc": "بعد تبديل حساب Codex الافتراضي، تتم كتابة auth.json و config.toml أيضًا إلى مجلد إعدادات Codex في WSL.",
       "codexAppUiInjection": "عرض حصة خدمة API",
-      "codexAppUiInjectionDesc": "بعد إعادة تشغيل مثيل Codex، اعرض عدد حسابات خدمة API في Cockpit Tools وحصتي الأسبوع و5 ساعات أسفل منطقة الكتابة؛ تعرض المثيلات المرتبطة بحساب DeepSeek رصيد ذلك الحساب بدلاً من ذلك. يجب إبقاء Cockpit Tools قيد التشغيل في الخلفية؛ يتوقف التحديث عند إغلاقه تمامًا أو عند عدم توفر الشبكة.",
+      "codexAppUiInjectionDesc": "بعد إعادة تشغيل مثيل Codex، تتبع شارة الحصة أسفل منطقة الكتابة النموذج المحدد: يعرض DeepSeek رصيد الحساب، ويعرض Grok حصته، وتعرض نماذج GPT حصتي الأسبوع و5 ساعات. يجب إبقاء Cockpit Tools قيد التشغيل في الخلفية؛ يتوقف التحديث عند إغلاقه تمامًا أو عند عدم توفر الشبكة.",
       "codexAppUiInjectionPoolLabel": "الحسابات",
       "codexAppUiInjectionWeeklyLabel": "أسبوع",
       "codexAppUiInjectionFiveHourLabel": "5 س",
+      "codexAppUiInjectionMissingLabel": "—",
       "codexWslConfigDir": "مجلد Codex في WSL",
       "codexWslConfigDirDesc": "أدخل مجلد .codex داخل WSL. مسارات \\\\wsl.localhost\\ مدعومة.",
       "codexWslConfigDirPlaceholder": "مثال: \\\\wsl.localhost\\Ubuntu-24.04\\home\\user\\.codex",
@@ -2236,10 +2244,18 @@
     "refreshAllSuccess": "اكتمل التحديث، نجح {{count}} حساب",
     "refreshAllPartialFailed": "اكتمل التحديث، نجح {{success}} / {{total}} حساب وفشل بعضها",
     "launchPreview": {
+      "configLoading": "جارٍ تحميل إعدادات النسخة…",
+      "configRefreshing": "جارٍ التحقق من إعدادات النسخة. تظل التفاصيل الحالية متاحة.",
+      "configLoadTimeout": "انتهت مهلة تحميل إعدادات النسخة. يرجى إعادة المحاولة.",
+      "configChanged": "تغيّرت إعدادات النسخة في موضع آخر. أعد تحميلها قبل الحفظ أو التشغيل.",
       "accessModeTitle": "وضع التشغيل",
       "prosLabel": "المزايا:",
       "consLabel": "العيوب:",
-      "accessModeDescription": "اختر طريقة تشغيل DeepSeek؛ تختلف الأوضاع في تبديل النموذج وOAuth وتحويل توليد الصور.",
+      "accessModeDescription": "اختر طريقة تشغيل هذا المزوّد؛ تختلف الأوضاع في تبديل الطرز وOAuth وتمرير توليد الصور.",
+      "accessModeApiServiceFixed": "تستخدم خدمة API دائماً وضع البوابة، ولا يمكن تغييره.",
+      "imageGenApiServiceFixed": "تُدار إعادة توجيه توليد الصور في خدمة API من «خدمة API ← الإعدادات»؛ وهنا تُعرض الحالة الحالية فقط.",
+      "oauthBindingApiServiceHint": "يُدار ربط OAuth في خدمة API من «خدمة API ← الإعدادات»؛ وهنا تُعرض حالة المدخل فقط.",
+      "oauthBindingApiServiceManaged": "يُدار عبر مجموعة حسابات خدمة API",
       "accessModeGatewayPros": "1: تبديل النموذج داخل Codex\n2: ربط حسابات OAuth واستخدام ميزات OAuth مثل الضغط عن بُعد والتحكم بالمتصفح\n3: إعداد حسابات GPT لتحويل توليد الصور",
       "accessModeGatewayCons": "1: يتطلب البوابة المحلية للمثيل، لذا أبطأ قليلًا من الاتصال المباشر",
       "accessModeDirectPros": "1: بدون بوابة، وهو الأسرع",
@@ -2402,6 +2418,7 @@
       "apiKey": "المفتاح",
       "statusRunning": "قيد التشغيل",
       "statusStopped": "متوقف",
+      "internalSchedulerLabel": "المجدول الداخلي",
       "statusDisabled": "معطل",
       "emptyMembers": "لا توجد حسابات في المجموعة",
       "footerHint": "نطاق الوصول: {{scope}}",
@@ -2432,8 +2449,6 @@
         "restrictFreeToggle": "تقييد الحسابات المجانية",
         "sessionAffinityConfirmTitle": "تفعيل ثبات الجلسة؟",
         "sessionAffinityDescription": "عند التفعيل، تحاول المحادثة نفسها الاستمرار باستخدام الحساب نفسه. إذا تعذر استخدام الحساب، يمكن للتوجيه التبديل إلى حساب آخر، وبعد انتهاء المدة يُختار حساب من جديد.",
-        "chatApiKeyUnsupported": "Chat Completions غير مدعوم",
-        "deepseekUnsupported": "DeepSeek غير مدعوم بعد",
         "pendingOauthUnsupported": "معلّق: غير مسموح",
         "freeNoticeRestricted": "الحسابات المجانية مقيّدة. عطّل هذا الخيار لتحديدها.",
         "freeNoticeUnstable": "قد يكون وكيل الحسابات المجانية غير مستقر. استخدمه بحذر.",
@@ -2485,6 +2500,9 @@
       "summaryMeta": "{{count}} حسابًا · {{scope}}",
       "summaryMetaUnconfigured": "غير مهيأ · {{scope}}",
       "memberTitle": "أعضاء المجموعة",
+      "memberPlatformLabel": "المنصة",
+      "memberPlatformAll": "كل المنصات",
+      "memberPlatformGrok": "حسابات منصة Grok",
       "imagePolicy": {
         "label": "سياسة الصور",
         "inherit": "الصور: تلقائي",
@@ -2669,6 +2687,8 @@
       "requestLogSuccess": "نجح",
       "requestLogFailed": "فشل",
       "requestLogTokens": "{{value}} رموز",
+      "imageForwardLabel": "تفعيل توليد الصور عبر GPT",
+      "imageForwardHint": "بعد التفعيل اختر حسابات GPT: تُنفَّذ طلبات توليد الصور وتحريرها على الحسابات المحددة وتستهلك حصتها، بينما تظل طلبات المحادثة تُوجَّه عبر مجموعة الحسابات.",
       "imageGenerationMode": {
         "enabled": "مفعّل",
         "imagesOnly": "للصور فقط",
@@ -2738,7 +2758,8 @@
           "recover": "استعادة",
           "recovering": "جارٍ الاستعادة…",
           "recoverAll": "استعادة الكل",
-          "resyncPool": "إعادة مزامنة مجموعة الحسابات"
+          "resyncPool": "إعادة مزامنة مجموعة الحسابات",
+          "reauthorizeHint": "بيانات اعتماد الحساب لم تعد صالحة؛ أعد التفويض عبر تسجيل الدخول الرسمي. إعادة ضبط الجدولة وحدها لا تصلح ذلك."
         }
       },
       "testChatModel": "النموذج",
@@ -2757,8 +2778,41 @@
       "desc": "استيراد الحساب الحالي من ~/.codex/auth.json",
       "import": "جلب الحساب المحلي"
     },
+    "tempLogin": {
+      "tab": "تسجيل الدخول الرسمي",
+      "desc": "تتم عملية تسجيل الدخول بالكامل داخل عميل سطح المكتب الرسمي: ينشئ العميل الرسمي رابط التفويض، وهو أيضًا من يتولى رد نداء التفويض وتبديل الرمز. لا يشارك Cockpit في رد نداء التفويض، بل يقرأ بيانات الاعتماد ويستوردها فقط بعد أن يكتبها العميل الرسمي على القرص.",
+      "note": "الملف الشخصي المؤقت مجلد فارغ داخل دليل بيانات التطبيق. بعد قراءة الحساب يُحذف مع دليل تشغيل العميل وعنصر سلسلة المفاتيح؛ ولا يتأثر المثيل الافتراضي ولا المثيلات المتعددة.",
+      "start": "افتح العميل الرسمي وسجّل الدخول",
+      "cancel": "إلغاء تسجيل الدخول",
+      "cancelling": "جارٍ إلغاء تسجيل الدخول الرسمي…",
+      "waitingHint": "أكمل تسجيل الدخول في العميل الرسمي. سيُغلق تلقائيًا بعد اكتشاف بيانات الدخول (10 دقائق كحد أقصى).",
+      "cancelled": "تم إلغاء تسجيل الدخول الرسمي وحذف الملف الشخصي المؤقت.",
+      "failed": "فشل تسجيل الدخول الرسمي: {{error}}",
+      "success": "تم الحصول على الحساب: {{email}}",
+      "intercept": {
+        "toggle": "اعترض فتح المتصفح واعرض رابط التفويض هنا",
+        "hint": "عند التفعيل، لن يؤدي الضغط على «متابعة» في العميل الرسمي إلى فتح المتصفح، بل سيعرض هنا رابط التفويض الذي ينشئه العميل الرسمي لنسخه فقط. وبعد تسجيل الدخول من أي متصفح، يظل رد نداء التفويض وتبديل الرمز من تنفيذ عميل سطح المكتب الرسمي؛ ولا يشارك Cockpit في التفويض. وعند الإيقاف يعمل المسار الرسمي كما هو."
+      },
+      "authUrl": {
+        "label": "رابط التفويض (ينشئه العميل الرسمي)",
+        "open": "افتح في المتصفح الافتراضي",
+        "openFailed": "تعذر فتح رابط التفويض: {{error}}",
+        "hint": "ينشئ العميل الرسمي هذا الرابط، ولا يعمل إلا في متصفح على هذا الجهاز. أبقِ نافذة العميل الرسمي مفتوحة حتى ينتهي تسجيل الدخول.",
+        "unavailable": "لم يتمكن Cockpit هذه المرة من التقاط رابط التفويض. سيفتح العميل الرسمي المتصفح كالمعتاد، ويمكنك تسجيل الدخول من هناك."
+      },
+      "phase": {
+        "prepare": "تحضير الملف الشخصي المؤقت",
+        "launch": "فتح العميل الرسمي",
+        "wait": "انتظار تسجيل الدخول",
+        "import": "قراءة بيانات الدخول",
+        "close": "إغلاق العميل الرسمي",
+        "clean": "حذف الملف الشخصي المؤقت"
+      }
+    },
     "import": {
       "localDesc": "استيراد حسابات Codex من الجلسات المسجلة محليًا.",
+      "localInstanceTitle": "اختيار المثيل",
+      "localInstanceDesc": "تم العثور على عدة مثيلات لـ Codex. اختر المثيل الذي تريد جلب الحساب المحلي منه:",
       "importing": "جارٍ استيراد الحساب المحلي...",
       "successMsg": "تم الاستيراد بنجاح: {{email}}"
     },
@@ -2799,6 +2853,7 @@
       "resetCreditGrantedAt": "مُنحت",
       "resetCreditExpiresAt": "تنتهي",
       "windowAccountCostHint": "فوترة الحساب (تقدير حسب أسعار النموذج)",
+      "windowEstimatedFullCostHint": "محتسبة من الاستخدام الحالي: تكلفة الحساب عند امتلاء هذه النافذة بالكامل",
       "windowUserCostHint": "فوترة المستخدم",
       "windowWeeks": "حصة {{count}} أسابيع",
       "windowDays": "حصة {{count}} أيام",
@@ -2893,7 +2948,7 @@
       "heroSubtitle": "أنشئ مهام إيقاظ مجدولة لحسابات Codex عبر OAuth، وشغّل اختبارات فورية، وراجع كل عملية تشغيل في مكان واحد.",
       "runtimeReady": "Codex CLI جاهز",
       "runtimeMissing": "يلزم Codex CLI",
-      "runtimeCardTitle": "واجهة Codex CLI",
+      "runtimeCardTitle": "طريقة التنفيذ",
       "runtimeUnknownPath": "لم يتم اكتشاف المسار",
       "runtimeUnchecked": "أعد الفحص لجلب أحدث حالة",
       "runtimeVersion": "الإصدار {{version}}",
@@ -3072,11 +3127,7 @@
       "runtimeConfigCodexCliPlaceholder": "مثال: /opt/homebrew/bin/codex",
       "runtimeConfigNodeLabel": "مسار node",
       "runtimeConfigNodePlaceholder": "مثال: /opt/homebrew/bin/node",
-      "runtimeConfigApplyHint": "بعد التعديل، انقر \"إعادة فحص CLI\" للحفظ والتطبيق فورًا.",
-      "officialChatRuntimeTitle": "اتصال رسمي مباشر",
-      "officialChatRuntimePath": "دردشة Codex الرسمية من ChatGPT",
-      "officialChatRuntimeSource": "اتصال رسمي مباشر",
-      "officialChatRuntimeMessage": "محادثة مباشرة بحساب OAuth"
+      "runtimeConfigApplyHint": "بعد التعديل، انقر \"إعادة فحص CLI\" للحفظ والتطبيق فورًا."
     },
     "sessionManager": {
       "title": "إدارة الجلسات",
@@ -3530,6 +3581,9 @@
         }
       }
     },
+    "grokAdd": {
+      "tab": "حساب Grok"
+    },
     "deepSeek": {
       "start": {
         "title": "تشغيل DeepSeek",
@@ -3565,6 +3619,13 @@
       }
     },
     "modelProviders": {
+      "keyModels": {
+        "title": "نماذج المفتاح",
+        "override": "إعداد مستقل",
+        "help": "عند التعطيل، تُستخدم إعدادات نماذج المزوّد. عند التفعيل، يستخدم هذا المفتاح وحده دليلًا وقدرات مستقلة.",
+        "saved": "حُفظت إعدادات نماذج المفتاح. أعد تشغيل تطبيقات العميل المفتوحة لتطبيقها.",
+        "inherit": "اتباع المزوّد"
+      },
       "tab": "موفرو النماذج",
       "desc": "أدر موفري النماذج وعدة مفاتيح API في مكان واحد، ثم أعد استخدامها مباشرة عند إضافة حسابات Codex بمفتاح API.",
       "add": "إضافة مزوّد",
@@ -3573,6 +3634,7 @@
       "emptyTitle": "لا يوجد موفرو نماذج بعد",
       "emptyDesc": "انقر على \"إضافة مزوّد\" في أعلى اليمين للبدء.",
       "baseUrl": "عنوان URL الأساسي",
+      "customEndpointHint": "يُستخدم نقطة نهاية مخصصة: هذا العنوان ليس نقطة النهاية الرسمية لـ «{{preset}}». ستُعامَل كنقطة نهاية متوافقة من طرف ثالث؛ اضبط البروتوكول وقائمة الطرز حسب المصدر.",
       "modelCatalog": "النماذج",
       "modelCatalogEmpty": "لا يوجد كتالوج نماذج",
       "gatewayHint": "تبدأ موفرو الطرف الثالث عبر البوابة المحلية لعزل المثيل وتحويل البروتوكول. يبقى موفرو OpenAI الرسميون باتصال مباشر.",
@@ -3583,6 +3645,8 @@
       "unnamedKey": "مفتاح بلا اسم",
       "createTitle": "إضافة مزوّد نموذج",
       "editTitle": "تعديل مزوّد النموذج",
+      "copySuffix": "نسخة",
+      "duplicate": "نسخ المزوّد (نسخة جديدة بلا مفتاح)",
       "existingApiKeys": "مفاتيح API الحالية",
       "fields": {
         "name": "اسم المزوّد",
@@ -3631,7 +3695,8 @@
         "responses": "Responses أصلي",
         "chatCompletions": "بروتوكول Chat Completions",
         "deepseekResponsesHint": "ابدأ DeepSeek لاختيار البوابة أو الاتصال المباشر الرسمي، ثم اختر Flash أو Pro. تعرض البوابة النماذج في Codex؛ والاتصال المباشر يتجاوز البوابة.",
-        "deepseekChatHint": "يستخدم DeepSeek Chat Completions جسر البوابة المحلية للمسارات القديمة. اختر Responses عندما تحتاج إلى سلوك أدوات Codex الرسمي."
+        "deepseekChatHint": "يستخدم DeepSeek Chat Completions جسر البوابة المحلية للمسارات القديمة. اختر Responses عندما تحتاج إلى سلوك أدوات Codex الرسمي.",
+        "deepseekThirdPartyHint": "هذا العنوان ليس نقطة نهاية رسمية لـ DeepSeek، لذا ستُعامَل كنقطة نهاية متوافقة من طرف ثالث؛ أدخل معرّفات الطرز الفعلية من المصدر بدل أسماء الطرز الرسمية."
       },
       "selectSavedProvider": "المزوّدون المحفوظون",
       "selectSavedApiKey": "مفاتيح API المحفوظة",
@@ -3853,7 +3918,17 @@
       "renameApiKeyPrompt": "إعادة تسمية مفتاح API",
       "renameApiKeySuccess": "تمت إعادة تسمية مفتاح API",
       "renameApiKeyFailed": "فشل إعادة تسمية مفتاح API: {{error}}",
-      "existingApiKeysSearch": "بحث عن مفاتيح API…"
+      "existingApiKeysSearch": "بحث عن مفاتيح API…",
+      "copyConfig": "نسخ الإعداد (بدون مفتاح)",
+      "copyConfigSuccess": "تم نسخ إعداد المزوّد بدون مفتاح API؛ الصقه عند إضافة مزوّد.",
+      "copyConfigFailed": "تعذّر نسخ الإعداد: {{error}}",
+      "importConfig": "استيراد الإعداد من الحافظة",
+      "importConfigSuccess": "تم استيراد الإعداد من الحافظة؛ أدخل مفتاح API ثم احفظ.",
+      "importConfigInvalid": "لا يوجد إعداد في الحافظة (استخدم «نسخ الإعداد» على البطاقة).",
+      "importConfigFailed": "تعذّر الاستيراد من الحافظة: {{error}}",
+      "importConfigPlaceholder": "استخدم «نسخ الإعداد» على البطاقة ثم الصق المحتوى هنا",
+      "importConfigAction": "استيراد الإعداد",
+      "importConfigFromClipboard": "قراءة الحافظة"
     },
     "quickSwitch": {
       "action": "تبديل المزوّد سريعًا",
@@ -4034,8 +4109,6 @@
       "standardDesc": "السرعة الافتراضية، استخدام عادي",
       "fast": "سريع",
       "fastDesc": "سرعة 1.5x، استخدام أعلى",
-      "ultrafast": "فائق السرعة",
-      "ultrafastDesc": "أسرع الاستجابات، استخدام أعلى",
       "saveSuccess": "تم تحديث السرعة",
       "saveFailed": "فشل حفظ السرعة: {{error}}"
     },
@@ -4215,7 +4288,8 @@
         "reasoningEffort": "شدة التفكير",
         "reasoningEffortValue": "تفكير {{effort}}",
         "serviceTier": "مستوى الخدمة",
-        "serviceTierValue": "مستوى {{tier}}"
+        "serviceTierValue": "مستوى {{tier}}",
+        "upstreamModel": "النموذج الفعلي"
       },
       "timeouts": {
         "entryLabel": "متقدم",
@@ -5457,12 +5531,6 @@
     },
     "quota": {
       "usedOfTotal": "{{used}} / {{total}}​"
-    },
-    "sessions": {
-      "title": "ملفات الجلسة المحلية",
-      "desc": "ملفات الجلسة المحلية — مسح محلي وفتح الموقع.",
-      "empty": "لا ملفات جلسة",
-      "open": "فتح الموقع"
     }
   },
   "qoder": {
@@ -6007,7 +6075,7 @@
   "apiKeyFun": {
     "eyebrow": "وسيط",
     "title": "ترحيل APIKEY.FUN",
-    "description": "وسيط Cockpit الشريك الرسمي يوفر وصولًا مستقرًا ومفتوحًا وعالي الكفاءة من حيث التكلفة إلى واجهات API للنماذج الكبيرة. يدعم نماذج رئيسية مثل Claude وOpenAI وGemini، وهو مناسب للتكوين الموحد في Codex وGemini CLI وClaude Code وأدوات التطوير الأخرى. عند التسجيل عبر رابط Cockpit الحصري، يمكنك الحصول على خصم دائم يصل إلى 5% على عمليات الشحن.",
+    "description": "وسيط Cockpit الشريك الرسمي يوفر وصولًا مستقرًا ومفتوحًا وعالي الكفاءة من حيث التكلفة إلى واجهات API للنماذج الكبيرة. يدعم نماذج رئيسية مثل Claude وChatGPT وGrok وGemini وZhipu GLM وKimi وDeepSeek، وهو مناسب للتكوين الموحد في Codex وGemini CLI وClaude Code وأدوات التطوير الأخرى. عند التسجيل عبر رابط Cockpit الحصري، يمكنك الحصول على خصم دائم يصل إلى 5% على عمليات الشحن.",
     "register": "رابط تسجيل حصري",
     "docs": "الوثائق الرسمية",
     "viewNow": "اعرض الآن",
@@ -6119,13 +6187,34 @@
       "addToClaudeDesktop": "إضافة إلى Claude",
       "addToClaudeCli": "إضافة إلى Claude CLI",
       "codexShort": "Codex",
-      "claudeShort": "Claude CLI"
+      "claudeShort": "Claude CLI",
+      "deployToCodex": "نشر سريع إلى Codex",
+      "deploying": "جارٍ جلب الطرز…",
+      "deploySuccess": "تم النشر إلى Codex: {{count}} طراز",
+      "deployFailed": "فشل النشر: {{error}}",
+      "useKey": "استخدام المفتاح"
     },
     "prefill": {
       "claudeDesktopReady": "تمت تعبئة إعدادات APIKEY.FUN. أكّد الإضافة إلى Claude."
     },
     "copyKey": "Copy Key​",
-    "clearKey": "Clear input​"
+    "clearKey": "Clear input​",
+    "table": {
+      "name": "الاسم",
+      "usage": "الاستخدام",
+      "status": "الحالة",
+      "createdAt": "أُضيف",
+      "actions": "الإجراءات",
+      "statusOk": "متاح",
+      "statusBad": "خطأ",
+      "statusUnknown": "لم يُفحص"
+    },
+    "config": {
+      "title": "استخدام مفتاح API",
+      "family": "المجموعة",
+      "platform": "النظام الحالي",
+      "unsupportedGroup": "لا تتوفر عملاء بنقرة واحدة لهذه المجموعة بعد."
+    }
   },
   "grok": {
     "search": "البحث في حسابات Grok CLI...",

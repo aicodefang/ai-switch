@@ -27,6 +27,7 @@ import (
 	"github.com/klauspost/compress/zstd"
 
 	codexmodels "github.com/router-for-me/CLIProxyAPI/v7/internal/client/codex/models"
+	"github.com/router-for-me/CLIProxyAPI/v7/internal/config"
 	internallogging "github.com/router-for-me/CLIProxyAPI/v7/internal/logging"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/registry"
 
@@ -43,7 +44,9 @@ const (
 	requestKindContextKey      contextKey = "cockpitRequestKind"
 	requestModelContextKey     contextKey = "cockpitRequestModel"
 	clientInstanceIDContextKey contextKey = "cockpitClientInstanceId"
+	targetAccountIDContextKey  contextKey = "cockpitTargetAccountId"
 	clientInstanceIDHeaderName            = "X-Cockpit-Instance-Id"
+	targetAccountIDHeaderName             = "X-Cockpit-Target-Account-Id"
 )
 
 const ginUserAPIKeyKey = "userApiKey"
@@ -56,6 +59,12 @@ const codexSparkModel = "gpt-5.3-codex-spark"
 const codexSparkCatalogTemplateModel = "gpt-5.3-codex"
 const defaultImagesMainModel = "gpt-5.5"
 const defaultImagesToolModel = "gpt-image-2.5"
+
+// codexClientCompactionHash 是下发给 Codex 客户端的统一压缩格式哈希（comp_hash）。
+// 各模型带不同 comp_hash 时，客户端在切换模型后会触发 PreTurn 自动压缩
+// （日志中为 run_auto_compact{reason=CompHashChanged}），与当前 token 用量无关；
+// 统一为最新官方值即可避免混合模型目录内切换模型被强制重建上下文。
+const codexClientCompactionHash = "3000"
 const legacyImagesToolModel = "gpt-image-2"
 const imagesGenerationsPath = "/v1/images/generations"
 const imagesEditsPath = "/v1/images/edits"
@@ -136,19 +145,36 @@ type apiKeySpec struct {
 	TokenLimit                uint64   `json:"tokenLimit,omitempty"`
 	TokenUsed                 uint64   `json:"tokenUsed,omitempty"`
 	Enabled                   bool     `json:"enabled"`
+	Internal                  bool     `json:"internal,omitempty"`
 }
 
 type modelRoutingSpec struct {
 	DefaultRoute  string           `json:"defaultRoute"`
 	FailurePolicy string           `json:"failurePolicy"`
 	Routes        []modelRouteSpec `json:"routes"`
+	Automatic     bool             `json:"automatic,omitempty"`
+	NativeModels  []string         `json:"nativeModels,omitempty"`
+	// RoutableModels 只参与路由与校验，不出现在客户端模型列表里（唤醒预设、历史兼容模型）。
+	RoutableModels []string `json:"routableModels,omitempty"`
 }
 
 type modelRouteSpec struct {
 	ID                string               `json:"id"`
 	Namespace         string               `json:"namespace"`
 	ProviderAccountID string               `json:"providerAccountId"`
-	ProviderGateway   *providerGatewaySpec `json:"providerGateway"`
+	ProviderGateway   *providerGatewaySpec `json:"providerGateway,omitempty"`
+	// NativeProvider 是「原生 provider 路由」：命名空间下的模型直接交给该 provider
+	// 的执行器（例如 xai/Grok），而不是走 Provider Gateway 直连上游 Base URL。
+	NativeProvider string                `json:"nativeProvider,omitempty"`
+	Models         []modelRouteModelSpec `json:"models,omitempty"`
+}
+
+type modelRouteModelSpec struct {
+	ClientModel           string `json:"clientModel"`
+	UpstreamModel         string `json:"upstreamModel"`
+	DisplayName           string `json:"displayName,omitempty"`
+	ReasoningLevels       []any  `json:"reasoningLevels,omitempty"`
+	DefaultReasoningLevel string `json:"defaultReasoningLevel,omitempty"`
 }
 
 type apiKeyTokenState struct {
@@ -338,10 +364,15 @@ type providerGatewayModelCapability struct {
 }
 
 type accountSpec struct {
-	ID                    string              `json:"id"`
-	Email                 string              `json:"email"`
-	AuthID                string              `json:"authId,omitempty"`
-	AuthKind              string              `json:"authKind,omitempty"`
+	ID       string `json:"id"`
+	Email    string `json:"email"`
+	AuthID   string `json:"authId,omitempty"`
+	AuthKind string `json:"authKind,omitempty"`
+	// Provider 是该 OAuth 账号的上游 provider（缺省 codex）。非 codex 时只允许
+	// sidecar 已支持并注册执行器的 provider（目前为 xai/Grok）。
+	Provider string `json:"provider,omitempty"`
+	// ModelIDs 是该账号可承接的客户端模型；仅第三方 provider 使用。
+	ModelIDs              []string            `json:"modelIds,omitempty"`
 	PlanType              string              `json:"planType,omitempty"`
 	AccessTokenOnly       bool                `json:"accessTokenOnly,omitempty"`
 	ChatGPTAccountID      string              `json:"chatgptAccountId,omitempty"`
@@ -401,11 +432,15 @@ type customRoutingRule struct {
 }
 
 type usagePayload struct {
-	Type             string       `json:"type"`
-	RequestID        string       `json:"requestId,omitempty"`
-	Provider         string       `json:"provider,omitempty"`
-	Model            string       `json:"model,omitempty"`
-	Alias            string       `json:"alias,omitempty"`
+	Type      string `json:"type"`
+	RequestID string `json:"requestId,omitempty"`
+	Provider  string `json:"provider,omitempty"`
+	Model     string `json:"model,omitempty"`
+	Alias     string `json:"alias,omitempty"`
+	// RequestedModel keeps the client-requested model (route namespace intact)
+	// while Model/UpstreamModel carry the model that actually reached upstream.
+	RequestedModel   string       `json:"requestedModel,omitempty"`
+	UpstreamModel    string       `json:"upstreamModel,omitempty"`
 	AccountID        string       `json:"accountId,omitempty"`
 	AccountEmail     string       `json:"accountEmail,omitempty"`
 	AuthID           string       `json:"authId,omitempty"`
@@ -420,6 +455,9 @@ type usagePayload struct {
 	ErrorCategory    string       `json:"errorCategory,omitempty"`
 	ErrorMessage     string       `json:"errorMessage,omitempty"`
 	LatencyMS        int64        `json:"latencyMs,omitempty"`
+	// TurnStateLength/TurnStateClass 来自上游响应头的旁路观测；state 原文不保存。
+	TurnStateLength *int   `json:"turnStateLength,omitempty"`
+	TurnStateClass  string `json:"turnStateClass,omitempty"`
 	Usage            usageDetails `json:"usage"`
 	RequestedAtMS    int64        `json:"requestedAtMs,omitempty"`
 }
@@ -939,6 +977,8 @@ func loadManifest(path string) (*manifest, error) {
 			}
 		}
 		if routing := m.APIKeys[i].ModelRouting; routing != nil {
+			routing.NativeModels = normalizeStringList(routing.NativeModels)
+			routing.RoutableModels = normalizeStringList(routing.RoutableModels)
 			routing.DefaultRoute = strings.ToLower(strings.TrimSpace(routing.DefaultRoute))
 			routing.FailurePolicy = strings.ToLower(strings.TrimSpace(routing.FailurePolicy))
 			seenNamespaces := make(map[string]struct{}, len(routing.Routes))
@@ -953,14 +993,34 @@ func loadManifest(path string) (*manifest, error) {
 				if _, exists := seenNamespaces[route.Namespace]; exists {
 					continue
 				}
-				if route.ProviderGateway == nil || !normalizeProviderGatewaySpec(route.ProviderGateway) {
+				route.NativeProvider = strings.ToLower(strings.TrimSpace(route.NativeProvider))
+				if route.ProviderGateway != nil && !normalizeProviderGatewaySpec(route.ProviderGateway) {
+					route.ProviderGateway = nil
+				}
+				if route.ProviderGateway == nil && route.NativeProvider == "" {
 					continue
 				}
+				seenModels := make(map[string]struct{}, len(route.Models))
+				models := make([]modelRouteModelSpec, 0, len(route.Models))
+				for _, model := range route.Models {
+					model.ClientModel = strings.TrimSpace(model.ClientModel)
+					model.UpstreamModel = strings.TrimSpace(model.UpstreamModel)
+					key := strings.ToLower(model.ClientModel)
+					if key == "" || model.UpstreamModel == "" {
+						continue
+					}
+					if _, exists := seenModels[key]; exists {
+						continue
+					}
+					seenModels[key] = struct{}{}
+					models = append(models, model)
+				}
+				route.Models = models
 				seenNamespaces[route.Namespace] = struct{}{}
 				routes = append(routes, route)
 			}
 			routing.Routes = routes
-			if routing.DefaultRoute != "oauth" || routing.FailurePolicy != "strict" || len(routes) == 0 {
+			if routing.DefaultRoute != "oauth" || routing.FailurePolicy != "strict" || (len(routes) == 0 && !routing.Automatic) {
 				m.APIKeys[i].ModelRouting = nil
 			}
 		}
@@ -980,6 +1040,8 @@ func loadManifest(path string) (*manifest, error) {
 		}
 		account.Email = strings.TrimSpace(account.Email)
 		account.AuthKind = strings.ToLower(strings.TrimSpace(account.AuthKind))
+		account.Provider = strings.ToLower(strings.TrimSpace(account.Provider))
+		account.ModelIDs = normalizeStringList(account.ModelIDs)
 		account.ChatGPTAccountID = strings.TrimSpace(account.ChatGPTAccountID)
 		m.accountByID[account.ID] = account
 		m.originalIndexByID[account.ID] = i
@@ -1205,6 +1267,7 @@ func withClientInstanceID(ctx context.Context, instanceID string) context.Contex
 
 type requestPolicy struct {
 	manifest     *manifest
+	cfg          *config.Config
 	emitter      *eventEmitter
 	tracker      *requestUsageTracker
 	tokenLimiter *apiKeyTokenLimiter
@@ -1232,6 +1295,7 @@ func (p *requestPolicy) middleware() gin.HandlerFunc {
 		if clientInstanceID != "" {
 			c.Request = c.Request.WithContext(withClientInstanceID(c.Request.Context(), clientInstanceID))
 		}
+		targetAccountID := strings.TrimSpace(c.Request.Header.Get(targetAccountIDHeaderName))
 		model := ""
 		startLogged := false
 		emitStart := func() {
@@ -1259,13 +1323,18 @@ func (p *requestPolicy) middleware() gin.HandlerFunc {
 			if clientInstanceID != "" {
 				ctx = withClientInstanceID(ctx, clientInstanceID)
 			}
+			if targetAccountID != "" && spec.Internal {
+				ctx = context.WithValue(ctx, targetAccountIDContextKey, targetAccountID)
+			}
 			c.Request = c.Request.WithContext(ctx)
 		}
 
 		if spec != nil && isModelsRequest(c.Request) {
 			models := clientCatalogModelsForAPIKey(p.manifest, spec)
 			if isCodexClientModelsRequest(c.Request) {
-				c.JSON(http.StatusOK, buildCodexClientModelsResponse(models, spec, contextWindowsForAPIKey(p.manifest, spec)))
+				response := buildCodexClientModelsResponse(models, spec, contextWindowsForAPIKey(p.manifest, spec), p.manifest)
+				applyThirdPartyMultiAgentV2Catalog(response, spec, p.manifest, p.cfg)
+				c.JSON(http.StatusOK, response)
 			} else {
 				c.JSON(http.StatusOK, buildModelsResponse(models))
 			}
@@ -1637,7 +1706,7 @@ func buildOllamaShowResponse(model string, modifiedAt time.Time) gin.H {
 
 func ollamaModelFamily(model string) string {
 	normalized := strings.ToLower(strings.TrimSpace(model))
-	for _, prefix := range []string{"gpt-6-astra", "gpt-5.6", "gpt-5.5", "gpt-5.4", "gpt-5.3", "gpt-5.2", "gpt-5.1", "gpt-oss", "codex"} {
+	for _, prefix := range []string{"gpt-6-astra", "gpt-6-sol", "gpt-6-luna", "gpt-5.6", "gpt-5.5", "gpt-5.4", "gpt-5.3", "gpt-5.2", "gpt-5.1", "gpt-oss", "codex"} {
 		if strings.HasPrefix(normalized, prefix) {
 			return prefix
 		}
@@ -1655,7 +1724,7 @@ func ollamaModelFamily(model string) string {
 
 func ollamaContextLength(model string) int {
 	switch {
-	case strings.HasPrefix(model, "gpt-6-astra"):
+	case strings.HasPrefix(model, "gpt-6-astra"), strings.HasPrefix(model, "gpt-6-sol"), strings.HasPrefix(model, "gpt-6-luna"):
 		return 1050000
 	case strings.HasPrefix(model, "gpt-5.6"):
 		return 372000
@@ -1670,8 +1739,11 @@ func ollamaContextLength(model string) int {
 
 func ollamaReasoningEfforts(model string) []string {
 	switch {
-	case strings.HasPrefix(model, "gpt-6-astra"):
+	case strings.HasPrefix(model, "gpt-6-astra"), strings.HasPrefix(model, "gpt-6-sol"):
 		return []string{"low", "medium", "high", "xhigh", "max", "ultra"}
+	// Luna 家族没有 ultra 档位，不要跟着上面一起放宽。
+	case strings.HasPrefix(model, "gpt-6-luna"):
+		return []string{"low", "medium", "high", "xhigh", "max"}
 	case strings.HasPrefix(model, "gpt-5.6-sol"), strings.HasPrefix(model, "gpt-5.6-terra"):
 		return []string{"low", "medium", "high", "xhigh", "max", "ultra"}
 	case strings.HasPrefix(model, "gpt-5.6-luna"), strings.HasPrefix(model, "gpt-5.6"):
@@ -1761,7 +1833,35 @@ func applyExplicitContextWindows(models []map[string]any, windows map[string]int
 	}
 }
 
-func buildCodexClientModelsResponse(models []string, spec *apiKeySpec, windows map[string]int64) gin.H {
+// xaiOnlyModelIDs 返回只由 Grok(xAI) 账号承接的客户端模型。
+//
+// 这些模型走的是 Grok 执行器（HTTP），不能沿用 Codex OAuth 的 Responses
+// WebSocket 传输，因此目录里必须关掉它们的 prefer_websockets。
+func xaiOnlyModelIDs(m *manifest) map[string]struct{} {
+	models := make(map[string]struct{})
+	if m == nil {
+		return models
+	}
+	for i := range m.Accounts {
+		account := &m.Accounts[i]
+		// 宿主 manifest 里 Grok 账号的 provider 是 "grok"，sidecar 内部统一用
+		// "xai"；这里漏归一化会把 xai-only 模型注册给 Codex 账号，导致 Grok 模型
+		// 被判给不承接它的账号并最终在 API Key 作用域过滤时报「账号池没有可用账号」。
+		if normalizedSidecarProvider(account.Provider) != "xai" {
+			continue
+		}
+		for _, model := range account.ModelIDs {
+			model = strings.TrimSpace(model)
+			if model != "" {
+				models[strings.ToLower(model)] = struct{}{}
+			}
+		}
+	}
+	return models
+}
+
+func buildCodexClientModelsResponse(models []string, spec *apiKeySpec, windows map[string]int64, m *manifest) gin.H {
+	xaiOnlyModels := xaiOnlyModelIDs(m)
 	sourceModels := make([]map[string]any, 0, len(models))
 	reserveClientModel := ""
 	for _, model := range models {
@@ -1820,8 +1920,30 @@ func buildCodexClientModelsResponse(models []string, spec *apiKeySpec, windows m
 		preferWebsockets := spec != nil && spec.ProviderGateway == nil && spec.ResponsesWebsockets
 		for _, model := range data {
 			model["prefer_websockets"] = preferWebsockets
+			if slug, _ := model["slug"].(string); slug != "" {
+				if _, xaiOnly := xaiOnlyModels[strings.ToLower(strings.TrimSpace(slug))]; xaiOnly {
+					// Grok 模型没有 Codex OAuth 的 WS 传输，必须走本地 HTTP 网关。
+					model["prefer_websockets"] = false
+					// xAI 的 Responses 端点只接受 function 工具，sidecar 会把
+					// freeform apply_patch 降级成单字段 function 再在响应侧还原；
+					// 目录里保持 freeform 声明，客户端才会把 apply_patch 交给模型。
+					if _, exists := model["apply_patch_tool_type"]; !exists {
+						model["apply_patch_tool_type"] = "freeform"
+					}
+				}
+			}
 			if spec != nil && spec.ProviderGateway != nil {
 				applyProviderGatewayCodexInputModalities(model, spec.ProviderGateway)
+			}
+			// 自动混合路由：路由模型的可发送图片能力取自路由的 provider 网关，
+			// 与 DeepSeek 网关模式一致（存在识图兜底模型时即可发送图片）。
+			if spec != nil && spec.ModelRouting != nil && spec.ModelRouting.Automatic {
+				if slug, _ := model["slug"].(string); slug != "" {
+					if route, _, status := resolveModelRoutingRoute(spec, slug); status == "matched" && route != nil {
+						applyProviderGatewayCodexInputModalities(model, route.ProviderGateway)
+					}
+					applyAutomaticRouteModelMetadata(spec, model, slug)
+				}
 			}
 			slug, _ := model["slug"].(string)
 			if isHiddenCodexClientModel(slug) {
@@ -1853,9 +1975,65 @@ func buildCodexClientModelsResponse(models []string, spec *apiKeySpec, windows m
 				model["upgrade"] = nil
 			}
 		}
+		// 最后统一覆盖压缩格式哈希，保证官方模板、路由模板和第三方模型下发同一个值。
+		for _, model := range data {
+			model["comp_hash"] = codexClientCompactionHash
+		}
 		applyExplicitContextWindows(data, windows)
 	}
 	return response
+}
+
+// applyThirdPartyMultiAgentV2Catalog 让第三方模型在 Codex 客户端目录里声明
+// multi_agent_version=v2。客户端据此启用 Multi-Agent V2 工具集，sidecar 再在
+// provider gateway 与 xAI 转发路径上完成请求/响应的协议转换；官方模型继续使用
+// 自身目录声明，不受影响。
+func applyThirdPartyMultiAgentV2Catalog(response gin.H, spec *apiKeySpec, m *manifest, cfg *config.Config) {
+	if response == nil || cfg == nil || !cfg.Codex.OptimizeMultiAgentV2 {
+		return
+	}
+	models, ok := response["models"].([]map[string]any)
+	if !ok {
+		return
+	}
+	xaiModels := xaiOnlyModelIDs(m)
+	for _, model := range models {
+		slug, _ := model["slug"].(string)
+		if !clientModelUsesThirdPartyBackend(slug, spec, xaiModels) {
+			continue
+		}
+		if existing, exists := model["multi_agent_version"]; exists {
+			if text, ok := existing.(string); ok && strings.TrimSpace(text) != "" {
+				continue
+			}
+		}
+		model["multi_agent_version"] = "v2"
+	}
+}
+
+// clientModelUsesThirdPartyBackend reports whether requests for the client model
+// leave the official Codex pool: routed through a provider gateway, matched to a
+// third-party model route, or declared by a Grok (xAI) account.
+func clientModelUsesThirdPartyBackend(slug string, spec *apiKeySpec, xaiModels map[string]struct{}) bool {
+	slug = strings.TrimSpace(slug)
+	if slug == "" {
+		return false
+	}
+	if _, ok := xaiModels[strings.ToLower(slug)]; ok {
+		return true
+	}
+	if spec == nil {
+		return false
+	}
+	if spec.ProviderGateway != nil {
+		return true
+	}
+	if spec.ModelRouting != nil {
+		if _, _, status := resolveModelRoutingRoute(spec, slug); status == "matched" || status == "native" {
+			return true
+		}
+	}
+	return false
 }
 
 func applyProviderGatewayCodexInputModalities(model map[string]any, gateway *providerGatewaySpec) {
@@ -1870,6 +2048,79 @@ func applyProviderGatewayCodexInputModalities(model map[string]any, gateway *pro
 	}
 	model["input_modalities"] = []any{"text"}
 	delete(model, "supports_image_detail_original")
+}
+
+// applyAutomaticRouteModelMetadata 用路由模型自带的元数据覆盖目录条目，
+// 让客户端看到的显示名与推理档位和 DeepSeek 网关模式保持一致。
+//
+// 官方注册表会给已知 slug 填自己的显示名与档位，这里必须显式覆盖，
+// 否则带前缀的官方名称（例如 `GPT-6 Astra`）和账号模型档位都会被替换掉。
+func applyAutomaticRouteModelMetadata(spec *apiKeySpec, model map[string]any, slug string) {
+	if spec == nil || spec.ModelRouting == nil {
+		return
+	}
+	if name := officialAutomaticModelDisplayName(slug); name != "" {
+		model["display_name"] = name
+		model["description"] = name
+	}
+	for _, route := range spec.ModelRouting.Routes {
+		for _, candidate := range route.Models {
+			if !strings.EqualFold(candidate.ClientModel, slug) {
+				continue
+			}
+			if name := strings.TrimSpace(candidate.DisplayName); name != "" {
+				model["display_name"] = name
+				model["description"] = name
+			}
+			if len(candidate.ReasoningLevels) > 0 {
+				model["supported_reasoning_levels"] = cloneAnyList(candidate.ReasoningLevels)
+				if level := strings.ToLower(strings.TrimSpace(candidate.DefaultReasoningLevel)); level != "" {
+					model["default_reasoning_level"] = level
+				}
+			}
+			return
+		}
+	}
+}
+
+// officialAutomaticModelDisplayName 返回 Cockpit 对官方命名空间模型的展示名。
+func officialAutomaticModelDisplayName(slug string) string {
+	switch strings.ToLower(strings.TrimSpace(slug)) {
+	case "gpt-6-astra":
+		return "GPT-6 Astra"
+	case "gpt-6-sol":
+		return "GPT-6 Sol"
+	case "gpt-6-luna":
+		return "GPT-6 Luna"
+	case "gpt-5.6-sol":
+		return "GPT-5.6 Sol"
+	case "gpt-5.6-terra":
+		return "GPT-5.6 Terra"
+	case "gpt-5.6-luna":
+		return "GPT-5.6 Luna"
+	case "gpt-5.5":
+		return "GPT-5.5"
+	case codexReserveModel:
+		return "GPT-5.6 Reserve"
+	default:
+		return ""
+	}
+}
+
+func cloneAnyList(values []any) []any {
+	cloned := make([]any, 0, len(values))
+	for _, value := range values {
+		if object, ok := value.(map[string]any); ok {
+			copyObject := make(map[string]any, len(object))
+			for key, item := range object {
+				copyObject[key] = item
+			}
+			cloned = append(cloned, copyObject)
+			continue
+		}
+		cloned = append(cloned, value)
+	}
+	return cloned
 }
 
 func intModelValueAny(value any) int {
@@ -1919,15 +2170,19 @@ func displayNameForModel(model string) string {
 	case "gpt-5-codex-mini":
 		return "GPT-5 Codex Mini"
 	case "gpt-5.6-sol":
-		return "GPT-5.6-Sol"
+		return "GPT-5.6 Sol"
 	case "gpt-5.6-terra":
-		return "GPT-5.6-Terra"
+		return "GPT-5.6 Terra"
 	case "gpt-5.6-luna":
-		return "GPT-5.6-Luna"
+		return "GPT-5.6 Luna"
 	case "gpt-6-astra":
-		return "6 Astra"
+		return "GPT-6 Astra"
+	case "gpt-6-sol":
+		return "GPT-6 Sol"
+	case "gpt-6-luna":
+		return "GPT-6 Luna"
 	case codexReserveModel:
-		return "Luna Reserve"
+		return "GPT-5.6 Reserve"
 	case "gpt-5.5":
 		return "GPT-5.5"
 	case "gpt-5.4":
@@ -2095,9 +2350,23 @@ func rewriteBodyModel(m *manifest, spec *apiKeySpec, requestKind string, body []
 	if isImageRequestKind(requestKind) {
 		return nil, model, nil
 	}
+	// 宿主内部请求（唤醒、鹈鹕测试）的模型由 Cockpit 自己选定，
+	// 必须绕过对外 API 的模型可见性与排除规则，否则关闭某个模型会连带打断唤醒任务。
+	if spec != nil && spec.Internal {
+		return nil, model, nil
+	}
+	if spec != nil && spec.ModelRouting != nil && spec.ModelRouting.Automatic {
+		if !automaticClientModelVisible(m, spec, model) {
+			return nil, model, fmt.Errorf("model %s is not available for this API key", model)
+		}
+		// Preserve client aliases for candidate lookup; canonicalization belongs
+		// to the selected native executor or provider route.
+		return nil, model, nil
+	}
 	if _, _, status := resolveModelRouting(spec, model); status != "none" {
-		// Keep the namespaced client model intact so the executor can route
-		// before OAuth catalog canonicalization strips the namespace.
+		if !routedClientModelAllowed(m, spec, model) {
+			return nil, model, fmt.Errorf("model %s is not available for this API key", model)
+		}
 		return nil, model, nil
 	}
 	canonical := canonicalModelForClientModel(m, spec, model)
@@ -2138,7 +2407,11 @@ func visibleModelsForAPIKey(m *manifest, spec *apiKeySpec) []string {
 		return normalizeStringList(models)
 	}
 	baseModels := append([]string(nil), m.ModelIDs...)
-	hasReserve := false
+	automatic := spec != nil && spec.ModelRouting != nil && spec.ModelRouting.Automatic
+	if automatic {
+		baseModels = append([]string(nil), spec.ModelRouting.NativeModels...)
+	}
+	hasReserve := automatic
 	for _, model := range baseModels {
 		if isCodexReserveModel(model) {
 			hasReserve = true
@@ -2154,12 +2427,28 @@ func visibleModelsForAPIKey(m *manifest, spec *apiKeySpec) []string {
 			if route.ProviderGateway == nil {
 				continue
 			}
+			if len(route.Models) > 0 {
+				for _, model := range route.Models {
+					// 自动混合路由下，GPT / Codex 命名空间的「壳位别名」（客户端名是 GPT、
+					// 上游是 deepseek-* 等）只展示官方推荐集，别名本身不出现在模型列表里；
+					// 上游本身就是 GPT / Codex 家族的账号模型（例如第三方 GPT 中转）照常展示，
+					// 否则客户端看得到却会被请求校验拒绝。
+					if automatic && isGptFamilyModelName(model.ClientModel) &&
+						!isGptFamilyModelName(model.UpstreamModel) &&
+						!automaticListedModel(spec, model.ClientModel) {
+						continue
+					}
+					models = append(models, model.ClientModel)
+				}
+				continue
+			}
 			for _, upstreamModel := range route.ProviderGateway.UpstreamModels {
 				models = append(models, route.Namespace+"/"+upstreamModel)
 			}
 		}
 		models = normalizeStringList(models)
 	}
+	models = applyModelFilters(models, nil, m.ExcludedModels)
 	if spec != nil {
 		models = applyModelFilters(models, spec.AllowedModels, spec.ExcludedModels)
 		if strings.TrimSpace(spec.ModelPrefix) != "" {
@@ -2174,6 +2463,13 @@ func visibleModelsForAPIKey(m *manifest, spec *apiKeySpec) []string {
 
 func isCodexReserveModel(model string) bool {
 	return strings.EqualFold(strings.TrimSpace(model), codexReserveModel)
+}
+
+// isGptFamilyModelName 判断模型名是否属于 GPT / Codex 官方命名空间。
+// 自动混合路由只用它收敛「展示清单」，不影响路由与请求校验。
+func isGptFamilyModelName(model string) bool {
+	model = strings.ToLower(strings.TrimSpace(model))
+	return strings.HasPrefix(model, "gpt-") || strings.HasPrefix(model, "codex-")
 }
 
 func clientCatalogModelsForAPIKey(m *manifest, spec *apiKeySpec) []string {
@@ -2204,6 +2500,12 @@ func canonicalModelForClientModel(m *manifest, spec *apiKeySpec, model string) s
 				withoutPrefix = source
 			}
 		}
+		// 未声明的 Codex/GPT 官方模型 id 不做兜底改写：这类名字代表客户端会用内置 GPT
+		// 元数据生成请求，静默落到非 GPT 上游只能得到文本工具调用标记，工具调用无法解析。
+		if isCodexShellModelID(withoutPrefix) &&
+			!providerGatewayDeclaresModel(m, spec.ProviderGateway, withoutPrefix) {
+			return ""
+		}
 		return providerGatewayCanonicalModel(spec.ProviderGateway, withoutPrefix)
 	}
 	if m != nil {
@@ -2212,6 +2514,71 @@ func canonicalModelForClientModel(m *manifest, spec *apiKeySpec, model string) s
 		}
 	}
 	return resolveSupportedModelAlias(m, withoutPrefix)
+}
+
+// codexShellModelIDs 是 Codex/GPT 官方模型 id（含 provider 目录壳位）。
+//
+// 这些名字代表客户端会用内置 GPT 元数据生成请求（工具定义、推理档位、responses_lite 等）。
+// provider gateway 不允许把它们静默改写成别的上游模型：上游如果不是 GPT 系模型，只能把
+// 工具调用写成文本标记返回（例如 DeepSeek 的 `<||DSML||...>`），客户端无法解析成工具调用，
+// 原始标记会直接落进正文，表现为「模型不能用工具」。
+var codexShellModelIDs = []string{
+	"gpt-6-astra",
+	"gpt-6-sol",
+	"gpt-6-luna",
+	"gpt-5.6-sol",
+	"gpt-5.6-terra",
+	"gpt-5.6-luna",
+	"gpt-5.5",
+	"gpt-5.4",
+	"gpt-5.4-mini",
+	"gpt-5.3-codex",
+	"gpt-5.3-codex-spark",
+	"gpt-5.2",
+}
+
+func isCodexShellModelID(model string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(model))
+	if normalized == "" {
+		return false
+	}
+	for _, shell := range codexShellModelIDs {
+		if normalized == shell {
+			return true
+		}
+	}
+	return false
+}
+
+// providerGatewayDeclaresModel 判断模型名是否由该 provider gateway 声明过：
+// 上游模型清单、默认上游模型，或 manifest 里为该上游配置的别名（目录壳位）。
+//
+// 只有声明过的名字才允许改写上游模型；未声明的 Codex/GPT 官方 id 必须拒绝。
+func providerGatewayDeclaresModel(m *manifest, gateway *providerGatewaySpec, model string) bool {
+	model = strings.TrimSpace(model)
+	if model == "" || gateway == nil {
+		return false
+	}
+	// 网关没有声明任何上游模型时保持原有透传行为。
+	if len(gateway.UpstreamModels) == 0 && strings.TrimSpace(gateway.UpstreamModel) == "" {
+		return true
+	}
+	for _, upstreamModel := range gateway.UpstreamModels {
+		if strings.EqualFold(model, upstreamModel) {
+			return true
+		}
+	}
+	if strings.EqualFold(strings.TrimSpace(gateway.UpstreamModel), model) {
+		return true
+	}
+	if m != nil {
+		for _, alias := range m.ModelAliases {
+			if strings.EqualFold(strings.TrimSpace(alias.Alias), model) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func providerGatewayCanonicalModel(gateway *providerGatewaySpec, model string) string {

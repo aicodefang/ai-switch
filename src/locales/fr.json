@@ -86,6 +86,7 @@
     "viewError": "Voir l’erreur"
   },
   "common": {
+    "retry": "Réessayer",
     "quotaRefreshScheduler": {
       "busy": "La file d’actualisation est pleine. Réessayez dans un instant.",
       "timeout": "L’actualisation du quota a expiré. Veuillez réessayer.",
@@ -123,6 +124,8 @@
     "windowsOperation": {
       "title": "Opération Windows inachevée",
       "accessDeniedDescription": "Windows a refusé cette opération. La cible peut s’exécuter avec des droits supérieurs ou se trouver dans un emplacement protégé.",
+      "storeLaunchBlockedDescription": "Windows n’a pas pu exécuter le client Codex configuré : le dossier du Store a peut-être été remplacé par une mise à jour ou n’autorise plus l’exécution. Le lancement direct a été bloqué pour ne pas ouvrir le mauvais compte. Utilisez « Redétecter le chemin et réessayer » ; si l’échec persiste, passez cette instance en mode CLI.",
+      "repairPath": "Redétecter le chemin et réessayer",
       "fileInUseDescription": "Le fichier cible est utilisé par un autre programme. Fermez-le puis réessayez.",
       "programNotFoundDescription": "Windows n’a pas trouvé le programme requis. Vérifiez l’installation ou le chemin configuré.",
       "portDeniedDescription": "Windows a bloqué l’accès au port. Une stratégie système ou un autre programme peut l’utiliser.",
@@ -362,7 +365,11 @@
     "deleteTagWarning": "Voulez-vous vraiment supprimer ce tag de tous les comptes ?",
     "expand": "Développer",
     "processing": "Traitement en cours...",
-    "selectAll": "Tout sélectionner"
+    "selectAll": "Tout sélectionner",
+    "quota": {
+      "weeklyWindow": "Semaine"
+    },
+    "optional": " (facultatif)"
   },
   "nav": {
     "overview": "Antigravity IDE​",
@@ -610,7 +617,7 @@
         "summary": "Les modèles sans préfixe utilisent l'abonnement actuel ; les modèles avec préfixe tels que cpa/gpt-5.5 sont transférés vers une API tierce. Les deux dépendent du service de routage local.",
         "rowSummary": "Les modèles sans préfixe utilisent l'abonnement actuel ; les modèles avec préfixe tels que cpa/gpt-5.5 sont transférés vers une API tierce. Les deux dépendent du service de routage local.",
         "confirmEnableTitle": "Activer le routage d'API tierce ?",
-        "confirmEnableMessage": "Les requêtes de modèles Codex seront acheminées via le service local Cockpit Tools. Si le service n'est pas en cours d'exécution, les modèles d'abonnement et tiers peuvent être indisponibles. Le lancement au démarrage sera activé lors de l'enregistrement.\n\nActiver le routage ?",
+        "confirmEnableMessage": "Les requêtes de modèles Codex seront acheminées via le service local Cockpit Tools. Si le service n'est pas en cours d'exécution, les modèles d'abonnement et tiers peuvent être indisponibles.\n\nActiver le routage ?",
         "confirmEnableAction": "Activer",
         "confirmDisableTitle": "Désactiver le routage d'API tierce ?",
         "confirmDisableMessage": "Une fois cette modification appliquée, la passerelle locale s'arrêtera, l'accès direct à l'abonnement officiel sera restauré et les modèles tiers ne seront plus disponibles.\n\nDésactiver le routage ?",
@@ -837,10 +844,11 @@
       "codexSyncWsl": "Synchroniser Codex vers WSL",
       "codexSyncWslDesc": "Après le changement du compte Codex par défaut, auth.json et config.toml sont aussi écrits dans le dossier Codex de WSL.",
       "codexAppUiInjection": "Quota du service API",
-      "codexAppUiInjectionDesc": "Après le redémarrage d’une instance Codex, afficher sous le compositeur le nombre de comptes et les quotas hebdomadaire et de 5 heures du service API Cockpit Tools ; les instances liées à un compte DeepSeek affichent à la place le solde de ce compte. Cockpit Tools doit rester actif en arrière-plan ; les mises à jour s’arrêtent après sa fermeture complète ou si le réseau est indisponible.",
+      "codexAppUiInjectionDesc": "Après le redémarrage d’une instance Codex, le badge de quota sous le compositeur suit le modèle sélectionné : DeepSeek affiche le solde du compte, Grok son quota et les modèles GPT les quotas hebdomadaire et de 5 heures. Cockpit Tools doit rester actif en arrière-plan ; les mises à jour s’arrêtent après sa fermeture complète ou si le réseau est indisponible.",
       "codexAppUiInjectionPoolLabel": "Comptes",
       "codexAppUiInjectionWeeklyLabel": "Semaine",
       "codexAppUiInjectionFiveHourLabel": "5 h",
+      "codexAppUiInjectionMissingLabel": "—",
       "codexWslConfigDir": "Dossier Codex WSL",
       "codexWslConfigDirDesc": "Saisissez le dossier .codex dans WSL. Les chemins \\\\wsl.localhost\\ sont pris en charge.",
       "codexWslConfigDirPlaceholder": "Exemple : \\\\wsl.localhost\\Ubuntu-24.04\\home\\user\\.codex",
@@ -2189,10 +2197,18 @@
     "refreshAllSuccess": "Actualisation terminée, {{count}} compte(s) réussi(s)",
     "refreshAllPartialFailed": "Actualisation terminée, {{success}} / {{total}} compte(s) réussi(s), certains ont échoué",
     "launchPreview": {
+      "configLoading": "Chargement de la configuration de l’instance…",
+      "configRefreshing": "Vérification de la configuration de l’instance. Les données actuelles restent disponibles.",
+      "configLoadTimeout": "Le chargement de la configuration de l’instance a expiré. Réessayez.",
+      "configChanged": "La configuration de l’instance a été modifiée ailleurs. Rechargez-la avant d’enregistrer ou de démarrer.",
       "accessModeTitle": "Mode de démarrage",
       "prosLabel": "Avantages :",
       "consLabel": "Inconvénients :",
-      "accessModeDescription": "Choisissez le mode de démarrage de DeepSeek ; les modes diffèrent sur le changement de modèle, OAuth et la redirection d'images.",
+      "accessModeDescription": "Choisissez le mode de démarrage de ce fournisseur ; les modes diffèrent pour le changement de modèle, OAuth et le transfert de génération d'images.",
+      "accessModeApiServiceFixed": "Le service API utilise toujours le mode passerelle ; non modifiable.",
+      "imageGenApiServiceFixed": "Le transfert de génération d'images du service API se gère dans « Service API → Paramètres » ; cette ligne n'affiche que l'état actuel.",
+      "oauthBindingApiServiceHint": "La liaison OAuth du service API se gère dans « Service API → Paramètres » ; cette ligne n'affiche que l'état de l'entrée.",
+      "oauthBindingApiServiceManaged": "Géré par le pool de comptes du service API",
       "accessModeGatewayPros": "1 : Changer de modèle directement dans Codex\n2 : Lier des comptes OAuth et utiliser les fonctions OAuth comme la compaction distante et le pilotage du navigateur\n3 : Configurer des comptes GPT pour rediriger la génération d'images",
       "accessModeGatewayCons": "1 : Nécessite la passerelle locale de l'instance, donc un peu plus lent que le direct",
       "accessModeDirectPros": "1 : Sans passerelle, le plus rapide",
@@ -2355,6 +2371,7 @@
       "apiKey": "Clé",
       "statusRunning": "Actif",
       "statusStopped": "Arrêté",
+      "internalSchedulerLabel": "Planificateur interne",
       "statusDisabled": "Désactivé",
       "emptyMembers": "Aucun compte dans la collection",
       "footerHint": "Portée d’accès : {{scope}}",
@@ -2385,8 +2402,6 @@
         "restrictFreeToggle": "Limiter les comptes Free",
         "sessionAffinityConfirmTitle": "Activer l’affinité de session ?",
         "sessionAffinityDescription": "Une fois activée, une même conversation essaie de conserver le même compte. S’il est indisponible, le routage peut en changer ; après expiration, un compte est sélectionné à nouveau.",
-        "chatApiKeyUnsupported": "Chat Completions non pris en charge",
-        "deepseekUnsupported": "DeepSeek pas encore",
         "pendingOauthUnsupported": "Auth en attente exclue",
         "freeNoticeRestricted": "Les comptes Free sont limités. Désactivez ceci pour les sélectionner.",
         "freeNoticeUnstable": "Le proxy des comptes Free peut être instable. À utiliser avec prudence.",
@@ -2438,6 +2453,9 @@
       "summaryMeta": "{{count}} comptes · {{scope}}",
       "summaryMetaUnconfigured": "Non configuré · {{scope}}",
       "memberTitle": "Membres de la collection",
+      "memberPlatformLabel": "Plateforme",
+      "memberPlatformAll": "Toutes les plateformes",
+      "memberPlatformGrok": "Comptes de la plateforme Grok",
       "imagePolicy": {
         "label": "Politique d’image",
         "inherit": "Image : Auto",
@@ -2622,6 +2640,8 @@
       "requestLogSuccess": "Succès",
       "requestLogFailed": "Échec",
       "requestLogTokens": "{{value}} jetons",
+      "imageForwardLabel": "Activer la génération d’images GPT",
+      "imageForwardHint": "Après activation, choisissez des comptes GPT : les demandes de génération et de retouche d’images passent par les comptes sélectionnés et consomment leur quota ; les requêtes de chat continuent d’utiliser le pool de comptes.",
       "imageGenerationMode": {
         "enabled": "Activé",
         "imagesOnly": "Images seules",
@@ -2691,7 +2711,8 @@
           "recover": "Rétablir",
           "recovering": "Rétablissement…",
           "recoverAll": "Tout rétablir",
-          "resyncPool": "Resynchroniser le pool"
+          "resyncPool": "Resynchroniser le pool",
+          "reauthorizeHint": "Les identifiants du compte ne sont plus valides ; reconnecte-toi via la connexion officielle. Réinitialiser le planificateur ne suffit pas."
         }
       },
       "testChatModel": "Modèle",
@@ -2710,8 +2731,41 @@
       "desc": "Importer le compte connecté depuis ~/.codex/auth.json",
       "import": "Récupérer le compte local"
     },
+    "tempLogin": {
+      "tab": "Connexion officielle",
+      "desc": "La connexion se déroule entièrement dans le client de bureau officiel : l'URL d'autorisation est générée par le client officiel, et le rappel d'autorisation ainsi que l'échange de jeton sont également gérés par le client officiel. Cockpit ne participe pas au rappel d'autorisation : il ne lit et n'importe les identifiants qu'après leur enregistrement par le client officiel.",
+      "note": "Le profil temporaire est un dossier vide dans le répertoire de données de l'application. Après la lecture du compte, il est supprimé avec le dossier d'exécution du client et l'entrée du trousseau ; l'instance par défaut et les instances multiples ne sont pas affectées.",
+      "start": "Ouvrir le client officiel et se connecter",
+      "cancel": "Annuler la connexion",
+      "cancelling": "Annulation de la connexion officielle…",
+      "waitingHint": "Terminez la connexion dans le client officiel. Il se ferme automatiquement dès que les identifiants sont détectés (10 minutes maximum).",
+      "cancelled": "Connexion officielle annulée et profil temporaire supprimé.",
+      "failed": "Échec de la connexion officielle : {{error}}",
+      "success": "Compte récupéré : {{email}}",
+      "intercept": {
+        "toggle": "Intercepter l'ouverture du navigateur et afficher l'URL d'autorisation ici",
+        "hint": "Une fois activé, cliquer sur « Continuer » dans le client officiel n'ouvre plus de navigateur : l'URL d'autorisation générée par le client officiel s'affiche ici pour être copiée. Après la connexion depuis n'importe quel navigateur, le rappel d'autorisation et l'échange de jeton restent gérés par le client de bureau officiel ; Cockpit ne participe pas à l'autorisation. Désactivé, le flux officiel reste inchangé."
+      },
+      "authUrl": {
+        "label": "URL d'autorisation (générée par le client officiel)",
+        "open": "Ouvrir dans le navigateur par défaut",
+        "openFailed": "Impossible d'ouvrir l'URL d'autorisation : {{error}}",
+        "hint": "L'URL provient du client officiel et ne fonctionne que dans un navigateur de cet ordinateur. Gardez la fenêtre officielle ouverte jusqu'à la fin de la connexion.",
+        "unavailable": "Cette fois, Cockpit n'a pas pu intercepter l'URL d'autorisation. Le client officiel ouvrira le navigateur comme d'habitude : connectez-vous depuis celui-ci."
+      },
+      "phase": {
+        "prepare": "Préparer le profil temporaire",
+        "launch": "Ouvrir le client officiel",
+        "wait": "Attendre la connexion",
+        "import": "Lire les identifiants",
+        "close": "Fermer le client officiel",
+        "clean": "Supprimer le profil temporaire"
+      }
+    },
     "import": {
       "localDesc": "Importer des comptes Codex depuis des sessions locales connectées.",
+      "localInstanceTitle": "Sélectionner l'instance",
+      "localInstanceDesc": "Plusieurs instances Codex ont été détectées. Choisissez l'instance dont importer le compte local :",
       "importing": "Importation du compte local...",
       "successMsg": "Importation réussie : {{email}}"
     },
@@ -2752,6 +2806,7 @@
       "resetCreditGrantedAt": "Attribué",
       "resetCreditExpiresAt": "Expire",
       "windowAccountCostHint": "Facturation compte (estimée selon les prix du modèle)",
+      "windowEstimatedFullCostHint": "Extrapolé de l'usage actuel : coût facturé au compte si cette fenêtre était saturée",
       "windowUserCostHint": "Facturation utilisateur",
       "windowWeeks": "Quota {{count}} sem.",
       "windowDays": "Quota {{count}} j",
@@ -2846,7 +2901,7 @@
       "heroSubtitle": "Créez des tâches de réveil planifiées pour les comptes OAuth Codex, lancez des tests ponctuels et suivez tous les déclenchements au même endroit.",
       "runtimeReady": "Codex CLI prêt",
       "runtimeMissing": "Codex CLI requis",
-      "runtimeCardTitle": "CLI Codex",
+      "runtimeCardTitle": "Mode d’exécution",
       "runtimeUnknownPath": "Chemin non détecté",
       "runtimeUnchecked": "Relancez la vérification pour obtenir l’état le plus récent",
       "runtimeVersion": "Version CLI {{version}}",
@@ -3025,11 +3080,7 @@
       "runtimeConfigCodexCliPlaceholder": "ex. : /opt/homebrew/bin/codex",
       "runtimeConfigNodeLabel": "Chemin de node",
       "runtimeConfigNodePlaceholder": "ex. : /opt/homebrew/bin/node",
-      "runtimeConfigApplyHint": "Après modification, cliquez sur « Vérifier à nouveau CLI » pour enregistrer et appliquer immédiatement.",
-      "officialChatRuntimeTitle": "Direct officiel",
-      "officialChatRuntimePath": "Chat Codex officiel de ChatGPT",
-      "officialChatRuntimeSource": "Direct officiel",
-      "officialChatRuntimeMessage": "Chat direct avec compte OAuth"
+      "runtimeConfigApplyHint": "Après modification, cliquez sur « Vérifier à nouveau CLI » pour enregistrer et appliquer immédiatement."
     },
     "sessionManager": {
       "title": "Gestion des sessions",
@@ -3483,6 +3534,9 @@
         }
       }
     },
+    "grokAdd": {
+      "tab": "Compte Grok"
+    },
     "deepSeek": {
       "start": {
         "title": "Démarrer DeepSeek",
@@ -3518,6 +3572,13 @@
       }
     },
     "modelProviders": {
+      "keyModels": {
+        "title": "Modèles de clé",
+        "override": "Personnaliser",
+        "help": "Désactivé : les paramètres des modèles du fournisseur sont hérités. Activé : seule cette clé utilise son propre catalogue et ses capacités.",
+        "saved": "Paramètres des modèles de la clé enregistrés. Redémarrez les clients ouverts pour les appliquer.",
+        "inherit": "Hériter du fournisseur"
+      },
       "tab": "Fournisseurs de modèles",
       "desc": "Gérez les fournisseurs de modèles et plusieurs clés API au même endroit, puis réutilisez-les directement lors de l'ajout de comptes Codex à clé API.",
       "add": "Ajouter un fournisseur",
@@ -3526,6 +3587,7 @@
       "emptyTitle": "Aucun fournisseur de modèles pour le moment",
       "emptyDesc": "Cliquez sur « Ajouter un fournisseur » en haut à droite pour commencer.",
       "baseUrl": "URL de base",
+      "customEndpointHint": "Point de terminaison personnalisé utilisé : cette adresse n'est pas le point de terminaison officiel de « {{preset}} ». Elle sera traitée comme un point de terminaison tiers compatible ; adaptez le protocole et le catalogue de modèles à l'amont.",
       "modelCatalog": "Modèles",
       "modelCatalogEmpty": "Aucun catalogue de modèles",
       "gatewayHint": "Les fournisseurs tiers démarrent via la passerelle locale pour isoler l’instance et convertir le protocole. Les fournisseurs OpenAI officiels restent directs.",
@@ -3536,6 +3598,8 @@
       "unnamedKey": "Clé sans nom",
       "createTitle": "Ajouter un fournisseur de modèles",
       "editTitle": "Modifier le fournisseur de modèles",
+      "copySuffix": "Copie",
+      "duplicate": "Dupliquer le fournisseur (nouvelle copie sans clé)",
       "existingApiKeys": "Clés API existantes",
       "fields": {
         "name": "Nom du fournisseur",
@@ -3584,7 +3648,8 @@
         "responses": "Responses natif",
         "chatCompletions": "Protocole Chat Completions",
         "deepseekResponsesHint": "Démarrez DeepSeek pour choisir la passerelle ou la connexion directe officielle, puis sélectionnez Flash ou Pro. La passerelle répertorie les modèles dans Codex ; la connexion directe contourne la passerelle.",
-        "deepseekChatHint": "DeepSeek Chat Completions utilise le pont de passerelle local pour les anciens chemins. Choisissez Responses lorsque vous avez besoin du comportement d’outil officiel de Codex."
+        "deepseekChatHint": "DeepSeek Chat Completions utilise le pont de passerelle local pour les anciens chemins. Choisissez Responses lorsque vous avez besoin du comportement d’outil officiel de Codex.",
+        "deepseekThirdPartyHint": "Cette adresse n'est pas un point de terminaison DeepSeek officiel : elle sera traitée comme un point de terminaison tiers compatible ; indiquez les vrais ID de modèles de l'amont et non les noms officiels."
       },
       "selectSavedProvider": "Fournisseurs enregistrés",
       "selectSavedApiKey": "Clés API enregistrées",
@@ -3806,7 +3871,17 @@
       "renameApiKeyPrompt": "Renommer la clé API",
       "renameApiKeySuccess": "Clé API renommée",
       "renameApiKeyFailed": "Échec du renommage de la clé API : {{error}}",
-      "existingApiKeysSearch": "Rechercher les clés API…"
+      "existingApiKeysSearch": "Rechercher les clés API…",
+      "copyConfig": "Copier la configuration (sans clé)",
+      "copyConfigSuccess": "Configuration du fournisseur copiée sans la clé API ; collez-la lors de l'ajout.",
+      "copyConfigFailed": "Échec de la copie de la configuration : {{error}}",
+      "importConfig": "Importer la configuration du presse-papiers",
+      "importConfigSuccess": "Configuration importée du presse-papiers ; saisissez la clé API puis enregistrez.",
+      "importConfigInvalid": "Aucune configuration trouvée dans le presse-papiers (utilisez Copier la configuration sur la carte).",
+      "importConfigFailed": "Échec de l'import depuis le presse-papiers : {{error}}",
+      "importConfigPlaceholder": "Utilisez « Copier la configuration » sur la carte, puis collez le contenu ici",
+      "importConfigAction": "Importer la configuration",
+      "importConfigFromClipboard": "Lire le presse-papiers"
     },
     "quickSwitch": {
       "action": "Changer rapidement de fournisseur",
@@ -3987,8 +4062,6 @@
       "standardDesc": "Vitesse par défaut, usage normal",
       "fast": "Rapide",
       "fastDesc": "Vitesse 1,5x, usage accru",
-      "ultrafast": "Ultra rapide",
-      "ultrafastDesc": "Réponses les plus rapides, usage accru",
       "saveSuccess": "Vitesse mise à jour",
       "saveFailed": "Impossible d’enregistrer la vitesse : {{error}}"
     },
@@ -4168,7 +4241,8 @@
         "reasoningEffort": "Raisonnement",
         "reasoningEffortValue": "Rais. {{effort}}",
         "serviceTier": "Niveau de service",
-        "serviceTierValue": "Niveau {{tier}}"
+        "serviceTierValue": "Niveau {{tier}}",
+        "upstreamModel": "Modèle réel"
       },
       "timeouts": {
         "entryLabel": "Avancé",
@@ -5410,12 +5484,6 @@
     },
     "quota": {
       "usedOfTotal": "{{used}} / {{total}}​"
-    },
-    "sessions": {
-      "title": "Fichiers de session locaux",
-      "desc": "Fichiers de session locaux — Analyse locale et ouverture de l’emplacement.",
-      "empty": "Aucun fichier de session",
-      "open": "Ouvrir l’emplacement"
     }
   },
   "qoder": {
@@ -6007,7 +6075,7 @@
   "apiKeyFun": {
     "eyebrow": "Relais",
     "title": "Relay APIKEY.FUN",
-    "description": "Le relais partenaire officiel de Cockpit fournit un accès API stable, ouvert et économique aux grands modèles. Il prend en charge Claude, OpenAI, Gemini et d’autres modèles majeurs, et convient à une configuration unifiée dans Codex, Gemini CLI, Claude Code et d’autres outils de développement. En vous inscrivant via le lien exclusif Cockpit, vous pouvez bénéficier d’une remise permanente allant jusqu’à 5% sur les recharges.",
+    "description": "Le relais partenaire officiel de Cockpit fournit un accès API stable, ouvert et économique aux grands modèles. Il prend en charge Claude, ChatGPT, Grok, Gemini, Zhipu GLM, Kimi, DeepSeek et d’autres modèles majeurs, et convient à une configuration unifiée dans Codex, Gemini CLI, Claude Code et d’autres outils de développement. En vous inscrivant via le lien exclusif Cockpit, vous pouvez bénéficier d’une remise permanente allant jusqu’à 5% sur les recharges.",
     "register": "Lien exclusif",
     "docs": "Docs officielles",
     "viewNow": "Voir maintenant",
@@ -6119,13 +6187,34 @@
       "addToClaudeDesktop": "Ajouter à Claude",
       "addToClaudeCli": "Ajouter à Claude CLI",
       "codexShort": "Codex",
-      "claudeShort": "Claude CLI"
+      "claudeShort": "Claude CLI",
+      "deployToCodex": "Déploiement rapide vers Codex",
+      "deploying": "Récupération des modèles…",
+      "deploySuccess": "Déployé vers Codex : {{count}} modèles",
+      "deployFailed": "Échec du déploiement : {{error}}",
+      "useKey": "Utiliser la clé"
     },
     "prefill": {
       "claudeDesktopReady": "La configuration APIKEY.FUN est remplie. Confirmez l'ajout à Claude."
     },
     "copyKey": "Copy Key​",
-    "clearKey": "Clear input​"
+    "clearKey": "Clear input​",
+    "table": {
+      "name": "Nom",
+      "usage": "Utilisation",
+      "status": "État",
+      "createdAt": "Ajouté",
+      "actions": "Actions",
+      "statusOk": "Disponible",
+      "statusBad": "Anomalie",
+      "statusUnknown": "Non vérifié"
+    },
+    "config": {
+      "title": "Utiliser la clé API",
+      "family": "Groupe",
+      "platform": "Système actuel",
+      "unsupportedGroup": "Aucun client en un clic n’est disponible pour ce groupe."
+    }
   },
   "grok": {
     "search": "Rechercher des comptes Grok CLI...",

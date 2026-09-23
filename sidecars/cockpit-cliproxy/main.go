@@ -157,6 +157,7 @@ func main() {
 	tokenLimiter := newAPIKeyTokenLimiter(m)
 	policy := &requestPolicy{
 		manifest:     m,
+		cfg:          cfg,
 		emitter:      emitter,
 		tracker:      usageTracker,
 		tokenLimiter: tokenLimiter,
@@ -207,6 +208,7 @@ func main() {
 	liveHandler := codexlive.NewHandler(coreManager, cfg)
 	defer liveHandler.Close()
 	relay := &relayServer{
+		automaticSelector:  buildCoreAuthSelectorWithConcurrency(nil, selector, m, quotaState, usageTracker),
 		runtime:            runtime,
 		cfg:                cfg,
 		manifest:           m,

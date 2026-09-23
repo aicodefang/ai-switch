@@ -28,7 +28,7 @@ async fn ensure_gateway_matches_runtime_once_locked() -> Result<(), String> {
         return Ok(());
     };
 
-    if !collection.enabled {
+    if !local_access_gateway_should_run(&collection) {
         stop_gateway_locked().await;
         return Ok(());
     }
@@ -928,6 +928,10 @@ struct RequestStatsMeta<'a> {
     error_message: Option<&'a str>,
     service_tier: Option<&'a str>,
     reasoning_effort: Option<&'a str>,
+    /// 客户端请求模型（含路由命名空间）；未提供时按上游模型展示。
+    requested_model: Option<&'a str>,
+    /// 实际发送给上游的模型。
+    upstream_model: Option<&'a str>,
 }
 
 async fn record_request_stats_with_meta(
@@ -1021,7 +1025,7 @@ async fn record_request_stats_with_meta(
                 })
             });
         runtime.collection_dirty |= token_usage_changed;
-        let event = append_usage_event(
+        let event = append_usage_event_with_meta(
             &mut runtime.stats.events,
             now,
             meta.request_id,
@@ -1035,6 +1039,8 @@ async fn record_request_stats_with_meta(
             request_kind,
             meta.service_tier,
             meta.reasoning_effort,
+            meta.requested_model,
+            meta.upstream_model,
             success,
             meta.http_status,
             error_category,
@@ -1247,7 +1253,7 @@ pub async fn activate_local_access_for_dir(
         .collection
         .clone()
         .ok_or_else(|| "API 服务集合尚未创建".to_string())?;
-    write_local_access_profile_takeover(profile_dir, &collection, None).await?;
+    write_local_access_profile_takeover(profile_dir, &collection, None, true).await?;
     Ok(state)
 }
 
@@ -1269,7 +1275,10 @@ pub async fn prepare_local_access_for_bound_profile_dir(
     }
 
     ensure_gateway_matches_runtime().await?;
-    ensure_profile_takeover(profile_dir, &collection).await?;
+    // This path is an explicit launch of an API Service-bound instance, not
+    // background reconciliation. It may reacquire the selected profile.
+    save_profile_takeover_backup(profile_dir, &collection.api_key)?;
+    write_local_access_profile_takeover(profile_dir, &collection, None, true).await?;
     Ok(true)
 }
 

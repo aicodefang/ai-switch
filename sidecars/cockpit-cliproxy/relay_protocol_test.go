@@ -418,49 +418,82 @@ func TestRelayServerProviderGatewayChatStreamTerminatesResponsesSSEFrames(t *tes
 	}
 }
 
-func TestRelayServerProviderGatewayFallsBackToDefaultUpstreamModel(t *testing.T) {
+func TestRelayServerProviderGatewayModelResolution(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	var upstreamBody string
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body, _ := io.ReadAll(r.Body)
-		upstreamBody = string(body)
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"id":"chatcmpl_1","object":"chat.completion","created":1,"model":"deepseek-v4-flash","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}]}`))
-	}))
-	defer upstream.Close()
 
-	gateway := &providerGatewaySpec{
-		BaseURL:        upstream.URL,
-		APIKey:         "deepseek-key",
-		UpstreamModel:  "deepseek-v4-flash",
-		UpstreamModels: []string{"deepseek-v4-flash", "deepseek-v4-pro"},
-		WireAPI:        "chat_completions",
-	}
-	m := &manifest{
-		APIKeys:  []apiKeySpec{{ID: "provider_gateway_account_1", Label: "Provider Gateway", Key: "client-key", Enabled: true, ProviderGateway: gateway}},
-		ModelIDs: []string{"deepseek-v4-flash", "deepseek-v4-pro"},
-		apiKeyByValue: map[string]*apiKeySpec{
-			"client-key": {ID: "provider_gateway_account_1", Label: "Provider Gateway", Key: "client-key", Enabled: true, ProviderGateway: gateway},
-		},
-	}
-	router := (&relayServer{
-		runtime:  &fakeRuntime{},
-		cfg:      &config.Config{},
-		manifest: m,
-		policy:   &requestPolicy{manifest: m},
-	}).router()
+	serve := func(t *testing.T, requestModel string, aliases map[string]string) (int, string, string) {
+		t.Helper()
+		upstreamBody := ""
+		upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			body, _ := io.ReadAll(r.Body)
+			upstreamBody = string(body)
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"id":"chatcmpl_1","object":"chat.completion","created":1,"model":"deepseek-v4-flash","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}]}`))
+		}))
+		defer upstream.Close()
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-5.4","input":"hello","stream":false}`))
-	req.Header.Set("Authorization", "Bearer client-key")
-	req.Header.Set("Content-Type", "application/json")
-	w := httptest.NewRecorder()
-	router.ServeHTTP(w, req)
+		gateway := &providerGatewaySpec{
+			BaseURL:        upstream.URL,
+			APIKey:         "deepseek-key",
+			UpstreamModel:  "deepseek-v4-flash",
+			UpstreamModels: []string{"deepseek-v4-flash", "deepseek-v4-pro"},
+			WireAPI:        "chat_completions",
+		}
+		aliasToSource := map[string]string{}
+		modelAliases := make([]modelAliasSpec, 0, len(aliases))
+		for alias, source := range aliases {
+			aliasToSource[strings.ToLower(alias)] = source
+			modelAliases = append(modelAliases, modelAliasSpec{SourceModel: source, Alias: alias})
+		}
+		spec := &apiKeySpec{ID: "provider_gateway_account_1", Label: "Provider Gateway", Key: "client-key", Enabled: true, ProviderGateway: gateway}
+		m := &manifest{
+			APIKeys:       []apiKeySpec{*spec},
+			ModelIDs:      []string{"deepseek-v4-flash", "deepseek-v4-pro"},
+			ModelAliases:  modelAliases,
+			aliasToSource: aliasToSource,
+			apiKeyByValue: map[string]*apiKeySpec{"client-key": spec},
+		}
+		router := (&relayServer{
+			runtime:  &fakeRuntime{},
+			cfg:      &config.Config{},
+			manifest: m,
+			policy:   &requestPolicy{manifest: m},
+		}).router()
 
-	if w.Code != http.StatusOK {
-		t.Fatalf("unexpected status: %d body=%s", w.Code, w.Body.String())
+		req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"`+requestModel+`","input":"hello","stream":false}`))
+		req.Header.Set("Authorization", "Bearer client-key")
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		return w.Code, w.Body.String(), upstreamBody
 	}
-	if !strings.Contains(upstreamBody, `"model":"deepseek-v4-flash"`) || strings.Contains(upstreamBody, `"model":"gpt-5.4"`) {
-		t.Fatalf("request should fall back to provider default upstream model: %s", upstreamBody)
+
+	// 目录壳位（客户端可见名）有别名声明时，按别名改写上游模型。
+	status, body, upstreamBody := serve(t, "gpt-5.4", map[string]string{"gpt-5.4": "deepseek-v4-pro"})
+	if status != http.StatusOK {
+		t.Fatalf("declared alias should be routable, got status=%d body=%s", status, body)
+	}
+	if !strings.Contains(upstreamBody, `"model":"deepseek-v4-pro"`) {
+		t.Fatalf("declared alias should resolve to its upstream model: %s", upstreamBody)
+	}
+
+	// 未声明的 Codex/GPT 模型 id 不能再静默落到默认上游模型：DeepSeek 之类的上游只能把
+	// 工具调用写成文本标记返回，客户端无法解析。
+	status, body, upstreamBody = serve(t, "gpt-5.6-sol", nil)
+	if status != http.StatusNotFound {
+		t.Fatalf("undeclared codex shell model should be rejected, got status=%d body=%s", status, body)
+	}
+	if upstreamBody != "" {
+		t.Fatalf("undeclared codex shell model must not reach upstream: %s", upstreamBody)
+	}
+
+	// 非 Codex/GPT 的未知模型名保留原有兜底行为。
+	status, body, upstreamBody = serve(t, "custom-model", nil)
+	if status != http.StatusOK {
+		t.Fatalf("custom model keeps fallback, got status=%d body=%s", status, body)
+	}
+	if !strings.Contains(upstreamBody, `"model":"deepseek-v4-flash"`) {
+		t.Fatalf("custom model should fall back to provider default upstream model: %s", upstreamBody)
 	}
 }
 
@@ -1578,6 +1611,112 @@ func TestRelayServerKeepsStreamContextOpenAfterOpen(t *testing.T) {
 	}
 }
 
+func TestExecuteStreamKeepsAttemptContextUntilStreamEnds(t *testing.T) {
+	runtime := &fakeRuntime{
+		streamResultFromContext: true,
+		streamResultDelay:       10 * time.Millisecond,
+		streamResultPayload:     []byte(`[DONE]`),
+	}
+	server := &relayServer{runtime: runtime}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	result, err := server.executeStreamWithOpenTimeout(
+		nil,
+		ctx,
+		[]string{"codex"},
+		cliproxyexecutor.Request{Model: "gpt-5.5"},
+		cliproxyexecutor.Options{},
+		"gpt-5.5",
+		time.Now(),
+		time.Second,
+	)
+	if err != nil {
+		t.Fatalf("unexpected open error: %v", err)
+	}
+	if result == nil || result.Chunks == nil {
+		t.Fatal("expected an opened stream result")
+	}
+	attemptCtx := runtime.lastStreamCtx
+	if attemptCtx == nil {
+		t.Fatal("expected runtime to receive the attempt context")
+	}
+	if errAttempt := attemptCtx.Err(); errAttempt != nil {
+		t.Fatalf("attempt context must stay open while the stream runs, got %v", errAttempt)
+	}
+
+	var payloads []string
+	for chunk := range result.Chunks {
+		payloads = append(payloads, string(chunk.Payload))
+	}
+	if len(payloads) != 1 || !strings.Contains(payloads[0], "[DONE]") {
+		t.Fatalf("chunks produced on the attempt context must still be forwarded: %#v", payloads)
+	}
+
+	select {
+	case <-attemptCtx.Done():
+	case <-time.After(time.Second):
+		t.Fatal("attempt context must be released once the stream ends")
+	}
+}
+
+func TestExecuteStreamReleasesAttemptContextOnOpenFailure(t *testing.T) {
+	runtime := &fakeRuntime{err: fmt.Errorf("upstream refused")}
+	server := &relayServer{runtime: runtime}
+
+	result, err := server.executeStreamWithOpenTimeout(
+		nil,
+		context.Background(),
+		[]string{"codex"},
+		cliproxyexecutor.Request{Model: "gpt-5.5"},
+		cliproxyexecutor.Options{},
+		"gpt-5.5",
+		time.Now(),
+		time.Second,
+	)
+	if err == nil {
+		t.Fatal("expected a failed stream open")
+	}
+	if result != nil {
+		t.Fatalf("failed open must not return a stream result: %#v", result)
+	}
+	attemptCtx := runtime.lastStreamCtx
+	if attemptCtx == nil {
+		t.Fatal("expected runtime to receive the attempt context")
+	}
+	if errAttempt := attemptCtx.Err(); errAttempt == nil {
+		t.Fatal("failed attempt must release its context")
+	}
+}
+
+func TestReleaseAttemptOnStreamEndStopsWhenDownstreamEnds(t *testing.T) {
+	upstream := make(chan cliproxyexecutor.StreamChunk)
+	released := make(chan struct{})
+	ctx, cancelDownstream := context.WithCancel(context.Background())
+	defer cancelDownstream()
+
+	result := releaseAttemptOnStreamEnd(
+		ctx,
+		&cliproxyexecutor.StreamResult{Headers: http.Header{"Content-Type": []string{"text/event-stream"}}, Chunks: upstream},
+		func() { close(released) },
+	)
+	if result == nil || result.Chunks == nil {
+		t.Fatal("expected a wrapped stream result")
+	}
+	if result.Headers.Get("Content-Type") != "text/event-stream" {
+		t.Fatalf("upstream headers must be preserved: %#v", result.Headers)
+	}
+
+	// 下游结束（客户端断开 / idle 超时）时，即使没人再读通道也必须释放 attempt，
+	// 并且不能把转发 goroutine 卡在通道上。
+	cancelDownstream()
+	select {
+	case <-released:
+	case <-time.After(time.Second):
+		t.Fatal("downstream cancellation must release the attempt context")
+	}
+}
+
 func TestRelayServerTimesOutIdleOpenedStream(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	oldTimeout := streamIdleTimeout
@@ -1809,10 +1948,11 @@ type fakeRuntime struct {
 	streamResultDelay       time.Duration
 	streamResultPayload     []byte
 
-	executeCalls int
-	streamCalls  int
-	lastReq      cliproxyexecutor.Request
-	lastOpts     cliproxyexecutor.Options
+	executeCalls  int
+	streamCalls   int
+	lastReq       cliproxyexecutor.Request
+	lastOpts      cliproxyexecutor.Options
+	lastStreamCtx context.Context
 
 	alphaSearchStatus  int
 	alphaSearchHeaders http.Header
@@ -1851,6 +1991,7 @@ func (r *fakeRuntime) CodexAlphaSearch(_ context.Context, model string, body []b
 
 func (r *fakeRuntime) ExecuteStream(ctx context.Context, _ []string, req cliproxyexecutor.Request, opts cliproxyexecutor.Options) (*cliproxyexecutor.StreamResult, error) {
 	r.streamCalls++
+	r.lastStreamCtx = ctx
 	r.lastReq = req
 	r.lastOpts = opts
 	if r.streamWaitForContext || r.streamCalls <= r.streamWaitAttempts {

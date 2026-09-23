@@ -128,6 +128,14 @@ struct SidecarUsageEvent {
     model: String,
     #[serde(default)]
     alias: String,
+    /// 客户端原始请求模型（宿主请求上下文透传，含路由命名空间）。
+    #[serde(default)]
+    #[serde(alias = "requested_model")]
+    requested_model: String,
+    /// 实际发送给上游的模型。
+    #[serde(default)]
+    #[serde(alias = "upstream_model")]
+    upstream_model: String,
     #[serde(default)]
     account_id: String,
     #[serde(default)]
@@ -449,6 +457,10 @@ fn sidecar_codex_api_key_auth_id(account: &CodexAccount) -> Option<String> {
 }
 
 fn sidecar_auth_id_for_account(account: &CodexAccount) -> Option<String> {
+    if codex_account::is_grok_upstream_provider(account) {
+        // Grok 供应商账号在 sidecar 里是 xai OAuth 账号，认证文件即账号 ID 对应文件。
+        return Some(codex_account::grok_sidecar_auth_file_name(&account.id));
+    }
     if account.is_api_key_auth() {
         return sidecar_codex_api_key_auth_id(account);
     }
@@ -571,16 +583,26 @@ fn legacy_api_key_is_active(collection: &CodexLocalAccessCollection) -> bool {
 }
 
 fn sidecar_api_key_manifest_values(collection: &CodexLocalAccessCollection) -> Vec<Value> {
+    sidecar_api_key_manifest_values_with_internal(collection, false)
+}
+
+fn sidecar_api_key_manifest_values_with_internal(
+    collection: &CodexLocalAccessCollection,
+    include_internal: bool,
+) -> Vec<Value> {
     let mut values = Vec::new();
     let bound_oauth =
         normalize_optional_account_ref(collection.bound_oauth_account_id.as_deref()).is_some();
-    if legacy_api_key_is_active(collection) {
+    if collection.enabled && legacy_api_key_is_active(collection) {
         values.push(json!({
             "id": "legacy",
             "label": default_local_api_key_label(),
             "key": collection.api_key.trim(),
             "enabled": true,
             "boundOAuth": bound_oauth,
+            "imageGenerationAccountIds": normalize_account_id_list(
+                collection.image_generation_account_ids.clone(),
+            ),
             "accountIds": collection.account_ids.clone(),
             "responsesWebsockets": collection.responses_websockets_enabled,
             "allowedModels": [],
@@ -589,7 +611,7 @@ fn sidecar_api_key_manifest_values(collection: &CodexLocalAccessCollection) -> V
             "tokenUsed": 0,
         }));
     }
-    for item in &collection.api_keys {
+    for item in collection.enabled.then_some(&collection.api_keys).into_iter().flatten() {
         if !item.enabled || item.key.trim().is_empty() {
             continue;
         }
@@ -617,6 +639,21 @@ fn sidecar_api_key_manifest_values(collection: &CodexLocalAccessCollection) -> V
             "tokenLimit": item.token_limit,
             "tokenUsed": item.token_used,
             "enabled": item.enabled,
+        }));
+    }
+    let internal_account_ids = internal_api_account_ids();
+    if include_internal && !internal_account_ids.is_empty() {
+        values.push(json!({
+            "id": "__cockpit_internal__",
+            "label": "Cockpit internal",
+            "key": internal_api_service_key(),
+            "internal": true,
+            "enabled": true,
+            "accountIds": internal_account_ids,
+            "allowedModels": [],
+            "excludedModels": [],
+            "tokenLimit": null,
+            "tokenUsed": 0,
         }));
     }
     values
@@ -749,10 +786,21 @@ fn validate_api_key_account_scope_update(
 
 fn codex_app_speed_service_tier(speed: &CodexAppSpeed) -> Option<&'static str> {
     match speed {
-        CodexAppSpeed::Ultrafast => Some("ultrafast"),
         CodexAppSpeed::Fast => Some("priority"),
         CodexAppSpeed::Standard => None,
     }
+}
+
+#[test]
+fn removed_app_speed_does_not_inject_a_service_tier() {
+    let legacy_speed: CodexAppSpeed =
+        serde_json::from_str(r#""ultrafast""#).expect("read legacy speed");
+    assert_eq!(codex_app_speed_service_tier(&legacy_speed), None);
+    assert_eq!(codex_app_speed_service_tier(&CodexAppSpeed::Standard), None);
+    assert_eq!(
+        codex_app_speed_service_tier(&CodexAppSpeed::Fast),
+        Some("priority")
+    );
 }
 
 fn effective_api_key_account_ids(
@@ -767,8 +815,22 @@ fn effective_api_key_account_ids(
 }
 
 fn effective_sidecar_account_ids(collection: &CodexLocalAccessCollection) -> Vec<String> {
+    effective_sidecar_account_ids_with_internal(collection, false)
+}
+
+fn effective_sidecar_account_ids_with_internal(
+    collection: &CodexLocalAccessCollection,
+    include_internal: bool,
+) -> Vec<String> {
     let mut account_ids = collection.account_ids.clone();
     let mut seen: HashSet<String> = account_ids.iter().cloned().collect();
+    if include_internal {
+        for account_id in internal_api_account_ids() {
+            if seen.insert(account_id.clone()) {
+                account_ids.push(account_id);
+            }
+        }
+    }
     // 生图转发账号不参与对话路由，但必须进入 sidecar 账号清单才能拿到凭据。
     for account_id in &collection.image_generation_account_ids {
         if seen.insert(account_id.clone()) {
@@ -777,6 +839,35 @@ fn effective_sidecar_account_ids(collection: &CodexLocalAccessCollection) -> Vec
     }
     for api_key in &collection.api_keys {
         for account_id in &api_key.account_ids {
+            if seen.insert(account_id.clone()) {
+                account_ids.push(account_id.clone());
+            }
+        }
+        if let Some(model_routing) = &api_key.model_routing {
+            for route in &model_routing.routes {
+                if seen.insert(route.provider_account_id.clone()) {
+                    account_ids.push(route.provider_account_id.clone());
+                }
+            }
+        }
+    }
+    account_ids
+}
+
+/// 参与对话路由的账号范围（`effective_sidecar_account_ids` 去掉纯生图转发账号）。
+///
+/// `image_generation_account_ids` 只承接生图 / 图片编辑请求（见 sidecar 的
+/// `filterAuthsForAPIKeyScope`：图片请求才切换到生图账号池），对话请求永远只走
+/// `account_ids` 与各 API Key 自己的账号范围。因此判断「账号池能否承接官方 GPT /
+/// Codex 对话模型」时必须排除仅用于生图转发的 OAuth 账号，否则只加了 DeepSeek /
+/// Grok 的账号池会因为「绑定 OAuth 生图账号」而错误地展示整套官方 GPT 模型。
+///
+/// 同一账号既在对话池、又在生图池时，仍按对话账号参与判断。
+fn conversation_sidecar_account_ids(collection: &CodexLocalAccessCollection) -> Vec<String> {
+    let mut account_ids = collection.account_ids.clone();
+    let mut seen: HashSet<String> = account_ids.iter().cloned().collect();
+    for api_key in &collection.api_keys {
+        for account_id in effective_api_key_account_ids(collection, api_key) {
             if seen.insert(account_id.clone()) {
                 account_ids.push(account_id.clone());
             }
@@ -1025,9 +1116,17 @@ fn sidecar_client_api_keys(
     collection: &CodexLocalAccessCollection,
     account_overrides: &HashMap<String, CodexAccount>,
 ) -> Vec<String> {
+    sidecar_client_api_keys_with_internal(collection, account_overrides, false)
+}
+
+fn sidecar_client_api_keys_with_internal(
+    collection: &CodexLocalAccessCollection,
+    account_overrides: &HashMap<String, CodexAccount>,
+    include_internal: bool,
+) -> Vec<String> {
     let mut keys = Vec::new();
     let mut seen = HashSet::new();
-    if legacy_api_key_is_active(collection)
+    if collection.enabled && legacy_api_key_is_active(collection)
         && !sidecar_auth_ids_for_account_ids_with_overrides(
             collection.account_ids.clone(),
             account_overrides,
@@ -1037,7 +1136,7 @@ fn sidecar_client_api_keys(
     {
         keys.push(collection.api_key.trim().to_string());
     }
-    for item in &collection.api_keys {
+    for item in collection.enabled.then_some(&collection.api_keys).into_iter().flatten() {
         let key = item.key.trim();
         let has_resolvable_scope = item.provider_gateway.is_some()
             || !sidecar_auth_ids_for_account_ids_with_overrides(
@@ -1049,6 +1148,17 @@ fn sidecar_client_api_keys(
             keys.push(key.to_string());
         }
     }
+    let internal_account_ids = internal_api_account_ids();
+    if include_internal
+        && !internal_account_ids.is_empty()
+        && !sidecar_auth_ids_for_account_ids_with_overrides(
+            internal_account_ids,
+            account_overrides,
+        )
+        .is_empty()
+    {
+        keys.push(internal_api_service_key().to_string());
+    }
     keys
 }
 
@@ -1056,8 +1166,16 @@ fn sidecar_api_key_account_scope_values(
     collection: &CodexLocalAccessCollection,
     account_overrides: &HashMap<String, CodexAccount>,
 ) -> Value {
+    sidecar_api_key_account_scope_values_with_internal(collection, account_overrides, false)
+}
+
+fn sidecar_api_key_account_scope_values_with_internal(
+    collection: &CodexLocalAccessCollection,
+    account_overrides: &HashMap<String, CodexAccount>,
+    include_internal: bool,
+) -> Value {
     let mut values = Map::new();
-    if legacy_api_key_is_active(collection) {
+    if collection.enabled && legacy_api_key_is_active(collection) {
         let auth_ids = sidecar_auth_ids_for_account_ids_with_overrides(
             collection.account_ids.clone(),
             account_overrides,
@@ -1066,7 +1184,7 @@ fn sidecar_api_key_account_scope_values(
             values.insert(collection.api_key.trim().to_string(), json!(auth_ids));
         }
     }
-    for item in &collection.api_keys {
+    for item in collection.enabled.then_some(&collection.api_keys).into_iter().flatten() {
         let key = item.key.trim();
         if !item.enabled || key.is_empty() {
             continue;
@@ -1082,6 +1200,19 @@ fn sidecar_api_key_account_scope_values(
             continue;
         }
         values.insert(key.to_string(), json!(auth_ids));
+    }
+    if include_internal {
+        let internal_account_ids = internal_api_account_ids();
+        let internal_auth_ids = sidecar_auth_ids_for_account_ids_with_overrides(
+            internal_account_ids,
+            account_overrides,
+        );
+        if !internal_auth_ids.is_empty() {
+            values.insert(
+                internal_api_service_key().to_string(),
+                json!(internal_auth_ids),
+            );
+        }
     }
     Value::Object(values)
 }
@@ -1503,6 +1634,24 @@ fn sidecar_account_manifest_value(
         value["modelContextWindows"] = json!(account.api_model_context_windows);
     }
     value
+}
+
+/// Grok 供应商账号在 sidecar 里的账号条目。
+///
+/// 该账号的上游是 Grok(xAI) provider，因此显式声明 `provider` 与 `modelIds`，
+/// 让 sidecar 只把绑定的 Grok 模型注册到这个账号上。
+fn grok_sidecar_account_manifest_value(account: &CodexAccount, auth_id: &str) -> Value {
+    let mut models = account.api_model_catalog.clone();
+    models.retain(|model| !model.trim().is_empty());
+    json!({
+        "id": account.id.clone(),
+        "email": account.email.clone(),
+        "authId": auth_id,
+        "authKind": "oauth",
+        "provider": codex_account::GROK_PROVIDER_ID,
+        "modelIds": models,
+        "planType": account.plan_type.as_deref(),
+    })
 }
 
 /// Hosts that must not be treated as a real upstream for the local API sidecar.
@@ -1945,10 +2094,53 @@ fn load_sidecar_account_for_start(account_id: &str) -> Option<CodexAccount> {
     codex_account::load_account(account_id).filter(sidecar_local_account_usable_for_start)
 }
 
+// Serialize Grok auth reads/writes with revocation. A refresh that started before deletion must
+// finish before cleanup, and a later refresh must observe the missing source credential.
+static GROK_SIDECAR_AUTH_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// Returns whether the source credential is usable. Missing/broken members are isolated, while
+/// failures to remove or write a credential remain errors so revocation cannot silently fail.
+fn prepare_grok_sidecar_auth_file(
+    account: &CodexAccount,
+    auth_path: &Path,
+    proxy_url: Option<&str>,
+) -> Result<bool, String> {
+    let _guard = GROK_SIDECAR_AUTH_LOCK
+        .lock()
+        .map_err(|_| "获取 Grok sidecar 凭据锁失败".to_string())?;
+    let auth_json = match codex_account::grok_sidecar_auth_json(account, proxy_url) {
+        Ok(value) => value,
+        Err(error) => {
+            match std::fs::remove_file(auth_path) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => {
+                    return Err(format!(
+                        "清理失效 Grok sidecar 凭据失败: path={}, error={}",
+                        auth_path.display(),
+                        error
+                    ));
+                }
+            }
+            logger::log_codex_api_warn(&format!(
+                "[CodexLocalAccess] 隔离不可用的 Grok 上游账号: account_id={}, error={}",
+                account.id, error
+            ));
+            return Ok(false);
+        }
+    };
+    let auth_content = serde_json::to_string_pretty(&auth_json)
+        .map_err(|error| format!("序列化 sidecar Grok 认证失败: {}", error))?;
+    write_string_atomic_if_changed(auth_path, &auth_content)?;
+    harden_sidecar_auth_file_permissions(auth_path)?;
+    Ok(true)
+}
+
 async fn prepare_sidecar_launch_config(
     collection: &CodexLocalAccessCollection,
     preparation: GatewayPreparationContext,
 ) -> Result<SidecarLaunchConfig, String> {
+    refresh_grok_upstream_accounts_for_collection(collection).await;
     let health_snapshot = {
         let runtime = gateway_runtime().lock().await;
         runtime.account_health.clone()
@@ -1978,6 +2170,7 @@ async fn prepare_sidecar_launch_config_in_dir(
     default_service_tier: Option<&str>,
     account_overrides: HashMap<String, CodexAccount>,
 ) -> Result<SidecarLaunchConfig, String> {
+    refresh_grok_upstream_accounts_for_collection(collection).await;
     prepare_sidecar_launch_config_in_dir_sync(
         collection,
         base_dir,
@@ -1987,6 +2180,37 @@ async fn prepare_sidecar_launch_config_in_dir(
         false,
         None,
     )
+}
+
+/// 启动网关前刷新 Grok 供应商账号绑定的 Grok 平台账号令牌。
+///
+/// 令牌快过期（或已过期）时先刷新再写 xai auth 文件，避免 sidecar 拿着失效令牌
+/// 启动；刷新失败只记日志，仍写入当前令牌，由后续保活与写穿补齐。
+async fn refresh_grok_upstream_accounts_for_collection(collection: &CodexLocalAccessCollection) {
+    for account_id in effective_sidecar_account_ids(collection) {
+        let Some(account) = codex_account::load_account(&account_id) else {
+            continue;
+        };
+        if !codex_account::is_grok_upstream_provider(&account) {
+            continue;
+        }
+        let Some(grok_account_id) = account
+            .upstream_grok_account_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        else {
+            continue;
+        };
+        if let Err(error) =
+            crate::modules::grok_account::prepare_account_for_injection(grok_account_id).await
+        {
+            logger::log_codex_api_warn(&format!(
+                "[CodexLocalAccess][provider-gateway] Grok 账号令牌刷新失败（继续使用当前令牌）: account_id={}, grok_account_id={}, error={}",
+                account.id, grok_account_id, error
+            ));
+        }
+    }
 }
 
 fn prepare_sidecar_launch_config_in_dir_sync(
@@ -2008,9 +2232,10 @@ fn prepare_sidecar_launch_config_in_dir_sync(
     let mut manifest_accounts = Vec::new();
     let mut codex_keys = Vec::new();
     let mut expected_auth_files = HashSet::new();
+    let mut routing_accounts = HashMap::new();
     let metered_feature_patterns =
         metered_feature_model_patterns_for_pool(collection, &account_overrides);
-    for (index, account_id) in effective_sidecar_account_ids(collection)
+    for (index, account_id) in effective_sidecar_account_ids_with_internal(collection, api_service)
         .into_iter()
         .enumerate()
     {
@@ -2049,7 +2274,12 @@ fn prepare_sidecar_launch_config_in_dir_sync(
             ));
             continue;
         }
-        let eligible = if collection_uses_provider_gateway_account(collection, &account.id) {
+        let internal_account = internal_api_account_ids()
+            .iter()
+            .any(|internal_id| internal_id == &account.id);
+        let eligible = if internal_account {
+            sidecar_local_account_usable_for_start(&account)
+        } else if collection_uses_provider_gateway_account(collection, &account.id) {
             is_override_account || is_provider_gateway_eligible_account(&account)
         } else {
             is_local_access_eligible_account(&account, collection.restrict_free_accounts)
@@ -2057,14 +2287,57 @@ fn prepare_sidecar_launch_config_in_dir_sync(
         if !eligible {
             continue;
         }
+        if codex_account::is_grok_upstream_provider(&account) {
+            // Grok 供应商账号：把绑定的 Grok 平台账号令牌写成 xai auth 文件，
+            // sidecar 用 Grok(xAI) 执行器承接该账号的模型。
+            let file_name = codex_account::grok_sidecar_auth_file_name(&account.id);
+            let auth_path = auths_dir.join(&file_name);
+            if !prepare_grok_sidecar_auth_file(&account, &auth_path, effective_proxy_url_ref)? {
+                continue;
+            }
+            routing_accounts.insert(account.id.clone(), account.clone());
+            expected_auth_files.insert(file_name.clone());
+            manifest_accounts.push(grok_sidecar_account_manifest_value(&account, &file_name));
+            continue;
+        }
+
+        routing_accounts.insert(account.id.clone(), account.clone());
 
         if account.is_api_key_auth() {
-            if let Some(config_value) = sidecar_codex_key_config_value_with_metered_feature_patterns(
+            // 与自动混合路由的判定保持一致：Chat 协议账号、以及具备逐模型识图能力的账号
+            // （例如 DeepSeek）走 provider 路由，这样带图片的请求才能自动转到识图模型。
+            let provider_route_models = if api_service
+                && automatic_api_service_provider_route_eligible(&account)
+            {
+                automatic_api_service_route_models(
+                    collection,
+                    &account,
+                    &api_service_supported_codex_model_ids(),
+                )
+            } else {
+                Vec::new()
+            };
+            if !provider_route_models.is_empty() {
+                manifest_accounts.push(sidecar_account_manifest_value(
+                    &account,
+                    None,
+                    collection,
+                ));
+                continue;
+            }
+            if let Some(mut config_value) = sidecar_codex_key_config_value_with_metered_feature_patterns(
                 &account,
                 collection,
                 effective_proxy_url_ref,
                 &metered_feature_patterns,
             ) {
+                if api_service && (!account.api_model_catalog.is_empty() || !account.api_model_mappings.is_empty()) {
+                    config_value["models"] = Value::Array(automatic_api_service_route_models(
+                        collection, &account, &api_service_supported_codex_model_ids(),
+                    ).into_iter().map(|model| json!({
+                        "name": model["upstreamModel"], "alias": model["clientModel"],
+                    })).collect());
+                }
                 codex_keys.push(config_value);
                 manifest_accounts.push(sidecar_account_manifest_value(&account, None, collection));
             } else {
@@ -2108,12 +2381,43 @@ fn prepare_sidecar_launch_config_in_dir_sync(
     }
     remove_stale_sidecar_auth_files(&auths_dir, &expected_auth_files)?;
 
-    let mut model_ids = visible_codex_model_ids_for_collection(collection, Some(&health_snapshot));
+    // Explicit native routes must not advertise or select a revoked xAI credential. Keep the
+    // persisted route and key account scopes intact so recovery cannot broaden access scopes.
+    let mut runtime_collection = collection.clone();
+    for api_key in &mut runtime_collection.api_keys {
+        if let Some(routing) = api_key.model_routing.as_mut() {
+            routing.routes.retain(|route| {
+                route.native_provider.as_deref() != Some("xai")
+                    || routing_accounts.contains_key(&route.provider_account_id)
+            });
+        }
+    }
+    let mut model_collection = runtime_collection.clone();
+    model_collection
+        .account_ids
+        .retain(|id| routing_accounts.contains_key(id));
+    let mut model_ids =
+        visible_codex_model_ids_for_collection(&model_collection, Some(&health_snapshot));
     let mut model_id_keys = model_ids
         .iter()
         .map(|model| model.trim().to_ascii_lowercase())
         .collect::<HashSet<_>>();
-    for api_key in &collection.api_keys {
+    // Grok 供应商账号自带模型目录：客户端可以直接请求这些模型名。
+    for account_id in effective_sidecar_account_ids(collection) {
+        let Some(account) = routing_accounts.get(&account_id) else {
+            continue;
+        };
+        if !codex_account::is_grok_upstream_provider(&account) {
+            continue;
+        }
+        for model in &account.api_model_catalog {
+            let model = model.trim();
+            if !model.is_empty() && model_id_keys.insert(model.to_ascii_lowercase()) {
+                model_ids.push(model.to_string());
+            }
+        }
+    }
+    for api_key in &runtime_collection.api_keys {
         let Some(model_routing) = api_key.model_routing.as_ref() else {
             continue;
         };
@@ -2129,9 +2433,18 @@ fn prepare_sidecar_launch_config_in_dir_sync(
         }
     }
     let app_locale = crate::modules::config::get_user_config().language;
+    let mut api_key_manifest_values =
+        sidecar_api_key_manifest_values_with_internal(&runtime_collection, api_service);
+    if api_service {
+        apply_automatic_api_service_model_routing(
+            &mut api_key_manifest_values,
+            &runtime_collection,
+            &routing_accounts,
+        );
+    }
     let manifest = json!({
         "locale": app_locale,
-        "apiKeys": sidecar_api_key_manifest_values(collection),
+        "apiKeys": api_key_manifest_values,
         "accounts": manifest_accounts,
         "modelIds": model_ids,
         "imageGenerationModel": collection.image_generation_model.clone(),
@@ -2173,11 +2486,19 @@ fn prepare_sidecar_launch_config_in_dir_sync(
     config.insert("debug".to_string(), json!(collection.debug_logs));
     config.insert(
         "api-keys".to_string(),
-        json!(sidecar_client_api_keys(collection, &account_overrides)),
+        json!(sidecar_client_api_keys_with_internal(
+            collection,
+            &account_overrides,
+            api_service,
+        )),
     );
     config.insert(
         "api-key-account-ids".to_string(),
-        sidecar_api_key_account_scope_values(collection, &account_overrides),
+        sidecar_api_key_account_scope_values_with_internal(
+            collection,
+            &account_overrides,
+            api_service,
+        ),
     );
     config.insert(
         "auth-error-localization".to_string(),

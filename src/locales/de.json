@@ -86,6 +86,7 @@
     "viewError": "Fehler anzeigen"
   },
   "common": {
+    "retry": "Erneut versuchen",
     "quotaRefreshScheduler": {
       "busy": "Die Aktualisierungswarteschlange ist voll. Bitte später erneut versuchen.",
       "timeout": "Zeitüberschreitung bei der Kontingentaktualisierung. Bitte erneut versuchen.",
@@ -123,6 +124,8 @@
     "windowsOperation": {
       "title": "Windows-Vorgang nicht abgeschlossen",
       "accessDeniedDescription": "Windows hat den Vorgang verweigert. Das Ziel läuft möglicherweise mit höheren Rechten oder liegt in einem geschützten Ordner.",
+      "storeLaunchBlockedDescription": "Windows konnte den aktuell konfigurierten Codex-Client nicht ausführen: Der Store-Ordner wurde möglicherweise durch ein Update ersetzt oder lässt keine Ausführung mehr zu. Der direkte Start wurde blockiert, damit kein falsches Konto geöffnet wird. Nutze „Pfad neu erkennen und erneut versuchen“; schlägt das fehl, stelle diese Instanz auf den CLI-Start um.",
+      "repairPath": "Pfad neu erkennen und erneut versuchen",
       "fileInUseDescription": "Die Zieldatei wird von einem anderen Programm verwendet. Schließen Sie es und versuchen Sie es erneut.",
       "programNotFoundDescription": "Windows konnte das benötigte Programm nicht finden. Prüfen Sie Installation und Pfad.",
       "portDeniedDescription": "Windows hat den Portzugriff blockiert. Eine Systemrichtlinie oder ein anderes Programm verwendet ihn möglicherweise.",
@@ -362,7 +365,11 @@
     "deleteTagWarning": "Möchten Sie dieses Tag wirklich von allen Konten entfernen?",
     "expand": "Erweitern",
     "processing": "Verarbeitung...",
-    "selectAll": "Alle auswählen"
+    "selectAll": "Alle auswählen",
+    "quota": {
+      "weeklyWindow": "Woche"
+    },
+    "optional": " (optional)"
   },
   "nav": {
     "overview": "Antigravity IDE​",
@@ -610,7 +617,7 @@
         "summary": "Präfixfreie Modelle nutzen das aktuelle Abonnement; Modelle mit Präfix wie cpa/gpt-5.5 werden an eine Drittanbieter-API weitergeleitet. Beide hängen vom lokalen Routing-Dienst ab.",
         "rowSummary": "Präfixfreie Modelle nutzen das aktuelle Abonnement; Modelle mit Präfix wie cpa/gpt-5.5 werden an eine Drittanbieter-API weitergeleitet. Beide hängen vom lokalen Routing-Dienst ab.",
         "confirmEnableTitle": "Drittanbieter-API-Routing aktivieren?",
-        "confirmEnableMessage": "Codex-Modellanfragen werden über den lokalen Cockpit Tools-Dienst weitergeleitet. Wenn der Dienst nicht läuft, sind möglicherweise sowohl Abonnement- als auch Drittanbietermodelle nicht verfügbar. Der Autostart bei der Anmeldung wird beim Speichern aktiviert.\n\nRouting aktivieren?",
+        "confirmEnableMessage": "Codex-Modellanfragen werden über den lokalen Cockpit Tools-Dienst weitergeleitet. Wenn der Dienst nicht läuft, sind möglicherweise sowohl Abonnement- als auch Drittanbietermodelle nicht verfügbar.\n\nRouting aktivieren?",
         "confirmEnableAction": "Aktivieren",
         "confirmDisableTitle": "Drittanbieter-API-Routing deaktivieren?",
         "confirmDisableMessage": "Sobald diese Änderung wirksam wird, wird das lokale Gateway gestoppt, der offizielle Direktzugriff wiederhergestellt und Drittanbietermodelle sind nicht mehr verfügbar.\n\nRouting deaktivieren?",
@@ -841,10 +848,11 @@
       "codexSyncWsl": "Codex mit WSL synchronisieren",
       "codexSyncWslDesc": "Nach dem Wechsel des Standard-Codex-Kontos werden auth.json und config.toml auch in das Codex-Verzeichnis in WSL geschrieben.",
       "codexAppUiInjection": "API-Dienst-Kontingent",
-      "codexAppUiInjectionDesc": "Nach dem Neustart einer Codex-Instanz Kontenanzahl sowie Wochen- und 5-Stunden-Kontingent des Cockpit Tools API-Dienstes unter dem Composer anzeigen; Instanzen mit gebundenem DeepSeek-Konto zeigen stattdessen das Guthaben dieses Kontos. Cockpit Tools muss im Hintergrund laufen; nach vollständigem Beenden oder ohne Netzwerk werden die Werte nicht weiter aktualisiert.",
+      "codexAppUiInjectionDesc": "Nach dem Neustart einer Codex-Instanz folgt die Kontingent-Anzeige unter dem Composer dem ausgewählten Modell: DeepSeek zeigt das Kontoguthaben, Grok sein Kontingent, GPT-Modelle das Wochen- und 5-Stunden-Kontingent. Cockpit Tools muss im Hintergrund laufen; nach vollständigem Beenden oder ohne Netzwerk werden die Werte nicht weiter aktualisiert.",
       "codexAppUiInjectionPoolLabel": "Konten",
       "codexAppUiInjectionWeeklyLabel": "Woche",
       "codexAppUiInjectionFiveHourLabel": "5 Std.",
+      "codexAppUiInjectionMissingLabel": "—",
       "codexWslConfigDir": "WSL-Codex-Verzeichnis",
       "codexWslConfigDirDesc": "Gib das .codex-Verzeichnis in WSL ein. \\\\wsl.localhost\\-Pfade werden unterstützt.",
       "codexWslConfigDirPlaceholder": "Beispiel: \\\\wsl.localhost\\Ubuntu-24.04\\home\\user\\.codex",
@@ -2189,10 +2197,18 @@
     "refreshAllSuccess": "Aktualisierung abgeschlossen, {{count}} Konto/Konten erfolgreich",
     "refreshAllPartialFailed": "Aktualisierung abgeschlossen, {{success}} / {{total}} Konten erfolgreich, einige fehlgeschlagen",
     "launchPreview": {
+      "configLoading": "Instanzkonfiguration wird geladen…",
+      "configRefreshing": "Instanzkonfiguration wird geprüft. Vorhandene Angaben bleiben verfügbar.",
+      "configLoadTimeout": "Zeitüberschreitung beim Laden der Instanzkonfiguration. Bitte erneut versuchen.",
+      "configChanged": "Die Instanzkonfiguration wurde an anderer Stelle geändert. Vor dem Speichern oder Starten neu laden.",
       "accessModeTitle": "Startmodus",
       "prosLabel": "Vorteile:",
       "consLabel": "Nachteile:",
-      "accessModeDescription": "Wähle, wie DeepSeek startet; die Modi unterscheiden sich bei Modellwechsel, OAuth und Bildweiterleitung.",
+      "accessModeDescription": "Wähle, wie dieser Anbieter startet; die Modi unterscheiden sich bei Modellwechsel, OAuth und Bildgenerierungs-Weiterleitung.",
+      "accessModeApiServiceFixed": "Der API-Dienst verwendet immer den Gateway-Modus; nicht änderbar.",
+      "imageGenApiServiceFixed": "Die Bildgenerierungs-Weiterleitung des API-Dienstes wird unter „API-Dienst → Einstellungen“ verwaltet; hier wird nur der aktuelle Status angezeigt.",
+      "oauthBindingApiServiceHint": "Die OAuth-Bindung des API-Dienstes wird unter „API-Dienst → Einstellungen“ verwaltet; hier wird nur der Status des Einstiegs angezeigt.",
+      "oauthBindingApiServiceManaged": "Vom API-Dienst-Kontopool verwaltet",
       "accessModeGatewayPros": "1: Modellwechsel direkt in Codex\n2: OAuth-Konten binden und OAuth-Funktionen wie Remote-Kompaktierung und Browser-Steuerung nutzen\n3: GPT-Konten für die Weiterleitung der Bildgenerierung konfigurieren",
       "accessModeGatewayCons": "1: Erfordert das lokale Instanz-Gateway und ist etwas langsamer als Direkt",
       "accessModeDirectPros": "1: Ohne Gateway, die schnellste Option",
@@ -2355,6 +2371,7 @@
       "apiKey": "Schlüssel",
       "statusRunning": "Aktiv",
       "statusStopped": "Gestoppt",
+      "internalSchedulerLabel": "Interner Scheduler",
       "statusDisabled": "Deaktiviert",
       "emptyMembers": "Diese Sammlung enthält noch keine Konten",
       "footerHint": "Zugriff: {{scope}}",
@@ -2385,8 +2402,6 @@
         "restrictFreeToggle": "Free-Konten begrenzen",
         "sessionAffinityConfirmTitle": "Sitzungsbindung aktivieren?",
         "sessionAffinityDescription": "Nach dem Aktivieren versucht dieselbe Unterhaltung, dasselbe Konto weiterzuverwenden. Ist es nicht verfügbar, kann das Routing wechseln; nach Ablauf wird ein Konto neu gewählt.",
-        "chatApiKeyUnsupported": "Chat Completions nicht unterstützt",
-        "deepseekUnsupported": "DeepSeek noch nicht",
         "pendingOauthUnsupported": "Ausstehend nicht möglich",
         "freeNoticeRestricted": "Free-Konten sind eingeschränkt. Deaktiviere dies, um sie auszuwählen.",
         "freeNoticeUnstable": "Proxy für Free-Konten kann instabil sein. Vorsichtig verwenden.",
@@ -2438,6 +2453,9 @@
       "summaryMeta": "{{count}} Konten · {{scope}}",
       "summaryMetaUnconfigured": "Nicht konfiguriert · {{scope}}",
       "memberTitle": "Sammlungsmitglieder",
+      "memberPlatformLabel": "Plattform",
+      "memberPlatformAll": "Alle Plattformen",
+      "memberPlatformGrok": "Grok-Plattformkonten",
       "imagePolicy": {
         "label": "Bildrichtlinie",
         "inherit": "Bild: Automatisch",
@@ -2622,6 +2640,8 @@
       "requestLogSuccess": "Erfolg",
       "requestLogFailed": "Fehlgeschlagen",
       "requestLogTokens": "{{value}} Token",
+      "imageForwardLabel": "GPT-Bildgenerierung aktivieren",
+      "imageForwardHint": "Nach dem Aktivieren GPT-Konten auswählen: Anfragen zur Bilderzeugung und Bildbearbeitung laufen über die gewählten Konten und verbrauchen deren Kontingent; Chat-Anfragen nutzen weiterhin den Kontenpool.",
       "imageGenerationMode": {
         "enabled": "Aktiv",
         "imagesOnly": "Nur Bilder",
@@ -2691,7 +2711,8 @@
           "recover": "Wiederherstellen",
           "recovering": "Wiederherstellung…",
           "recoverAll": "Alle wiederherstellen",
-          "resyncPool": "Kontenpool neu synchronisieren"
+          "resyncPool": "Kontenpool neu synchronisieren",
+          "reauthorizeHint": "Die Zugangsdaten des Kontos sind ungültig. Bitte über die offizielle Anmeldung erneut autorisieren; das Zurücksetzen des Schedulers allein behebt das nicht."
         }
       },
       "testChatModel": "Modell",
@@ -2710,8 +2731,41 @@
       "desc": "Aktuell eingeloggtes Konto aus ~/.codex/auth.json importieren",
       "import": "Lokales Konto abrufen"
     },
+    "tempLogin": {
+      "tab": "Offizielle Anmeldung",
+      "desc": "Die Anmeldung läuft vollständig im offiziellen Desktop-Client ab: Die Autorisierungs-URL wird vom offiziellen Client erzeugt, und auch der Autorisierungs-Callback und der Token-Austausch werden vom offiziellen Client verarbeitet. Cockpit ist am Autorisierungs-Callback nicht beteiligt und liest die Anmeldedaten erst nach dem Speichern durch den offiziellen Client, um sie zu importieren.",
+      "note": "Das temporäre Profil ist ein leerer Ordner im App-Datenverzeichnis. Nach dem Auslesen des Kontos wird es zusammen mit dem Laufzeitverzeichnis des Clients und dem Schlüsselbund-Eintrag gelöscht; Standardinstanz und Multi-Instanzen bleiben unberührt.",
+      "start": "Offiziellen Client öffnen und anmelden",
+      "cancel": "Anmeldung abbrechen",
+      "cancelling": "Offizielle Anmeldung wird abgebrochen…",
+      "waitingHint": "Schließen Sie die Anmeldung im offiziellen Client ab. Er wird automatisch beendet, sobald die Anmeldedaten erkannt wurden (maximal 10 Minuten).",
+      "cancelled": "Offizielle Anmeldung abgebrochen und temporäres Profil entfernt.",
+      "failed": "Offizielle Anmeldung fehlgeschlagen: {{error}}",
+      "success": "Konto übernommen: {{email}}",
+      "intercept": {
+        "toggle": "Browser-Sprung abfangen und die Autorisierungs-URL hier anzeigen",
+        "hint": "Ist dies aktiv, öffnet ein Klick auf „Weiter“ im offiziellen Client keinen Browser mehr, sondern zeigt die vom offiziellen Client erzeugte Autorisierungs-URL hier zum Kopieren an. Nach der Anmeldung in einem beliebigen Browser werden Autorisierungs-Callback und Token-Austausch weiterhin vom offiziellen Desktop-Client ausgeführt; Cockpit ist an der Autorisierung nicht beteiligt. Ist es aus, läuft der offizielle Ablauf unverändert."
+      },
+      "authUrl": {
+        "label": "Autorisierungs-URL (vom offiziellen Client erzeugt)",
+        "open": "Im Standardbrowser öffnen",
+        "openFailed": "Autorisierungs-URL konnte nicht geöffnet werden: {{error}}",
+        "hint": "Die URL stammt vom offiziellen Client und lässt sich nur in einem Browser auf diesem Rechner öffnen. Lass das offizielle Fenster bis zum Ende der Anmeldung geöffnet.",
+        "unavailable": "Diesmal konnte die Autorisierungs-URL nicht abgefangen werden. Der offizielle Client öffnet wie gewohnt den Browser; melde dich dort an."
+      },
+      "phase": {
+        "prepare": "Temporäres Profil vorbereiten",
+        "launch": "Offiziellen Client starten",
+        "wait": "Auf Anmeldung warten",
+        "import": "Anmeldedaten lesen",
+        "close": "Offiziellen Client beenden",
+        "clean": "Temporäres Profil entfernen"
+      }
+    },
     "import": {
       "localDesc": "Codex-Konten aus lokal angemeldeten Sitzungen importieren.",
+      "localInstanceTitle": "Instanz auswählen",
+      "localInstanceDesc": "Es wurden mehrere Codex-Instanzen gefunden. Wählen Sie die Instanz, aus der das lokale Konto importiert werden soll:",
       "importing": "Lokales Konto wird importiert...",
       "successMsg": "Import erfolgreich: {{email}}"
     },
@@ -2752,6 +2806,7 @@
       "resetCreditGrantedAt": "Gewährt",
       "resetCreditExpiresAt": "Läuft ab",
       "windowAccountCostHint": "Kontokosten (aus Modellpreisen geschätzt)",
+      "windowEstimatedFullCostHint": "Aus der bisherigen Nutzung hochgerechnet: Kontokosten bei voller Ausschöpfung dieses Fensters",
       "windowUserCostHint": "Nutzerkosten",
       "windowWeeks": "{{count}}-Wochen-Kontingent",
       "windowDays": "{{count}}-Tage-Kontingent",
@@ -2846,7 +2901,7 @@
       "heroSubtitle": "Erstelle zeitgesteuerte Wakeup-Aufgaben für OAuth-Codex-Konten, führe Ad-hoc-Tests aus und prüfe alle Auslösungen an einem Ort.",
       "runtimeReady": "Codex CLI bereit",
       "runtimeMissing": "Codex CLI erforderlich",
-      "runtimeCardTitle": "Codex-CLI",
+      "runtimeCardTitle": "Ausführung",
       "runtimeUnknownPath": "Pfad nicht erkannt",
       "runtimeUnchecked": "Erneut prüfen, um den neuesten Status zu laden",
       "runtimeVersion": "CLI-Version {{version}}",
@@ -3025,11 +3080,7 @@
       "runtimeConfigCodexCliPlaceholder": "z. B. /opt/homebrew/bin/codex",
       "runtimeConfigNodeLabel": "node-Pfad",
       "runtimeConfigNodePlaceholder": "z. B. /opt/homebrew/bin/node",
-      "runtimeConfigApplyHint": "Klicken Sie nach Änderungen auf „CLI erneut prüfen“, um sie zu speichern und sofort anzuwenden.",
-      "officialChatRuntimeTitle": "Offiziell direkt",
-      "officialChatRuntimePath": "Offizieller ChatGPT-Codex-Chat",
-      "officialChatRuntimeSource": "Offiziell direkt",
-      "officialChatRuntimeMessage": "Direkter Chat mit OAuth-Konto"
+      "runtimeConfigApplyHint": "Klicken Sie nach Änderungen auf „CLI erneut prüfen“, um sie zu speichern und sofort anzuwenden."
     },
     "sessionManager": {
       "title": "Sitzungsverwaltung",
@@ -3483,6 +3534,9 @@
         }
       }
     },
+    "grokAdd": {
+      "tab": "Grok-Konto"
+    },
     "deepSeek": {
       "start": {
         "title": "DeepSeek starten",
@@ -3518,6 +3572,13 @@
       }
     },
     "modelProviders": {
+      "keyModels": {
+        "title": "Key-Modelle",
+        "override": "Eigene Vorgaben",
+        "help": "Deaktiviert gelten die Modelleinstellungen des Anbieters. Aktiviert verwendet nur dieser Key einen eigenen Katalog und eigene Fähigkeiten.",
+        "saved": "Modelleinstellungen des Keys gespeichert. Laufende Clients neu starten, um sie anzuwenden.",
+        "inherit": "Vom Anbieter"
+      },
       "tab": "Modellanbieter",
       "desc": "Verwalten Sie Modellanbieter und mehrere API-Keys an einem Ort und verwenden Sie sie beim Hinzufügen von Codex-Konten mit API-Key direkt wieder.",
       "add": "Anbieter hinzufügen",
@@ -3526,6 +3587,7 @@
       "emptyTitle": "Noch keine Modellanbieter",
       "emptyDesc": "Klicken Sie oben rechts auf „Anbieter hinzufügen“, um loszulegen.",
       "baseUrl": "Basis-URL",
+      "customEndpointHint": "Benutzerdefinierter Endpunkt aktiv: Diese Adresse ist nicht der offizielle Endpunkt von „{{preset}}“. Sie wird als kompatibler Drittanbieter-Endpunkt behandelt; Protokoll und Modellkatalog bitte an das Upstream anpassen.",
       "modelCatalog": "Modelle",
       "modelCatalogEmpty": "Kein Modellkatalog",
       "gatewayHint": "Drittanbieter starten über das lokale Gateway zur Instanztrennung und Protokollumwandlung. Offizielle OpenAI-Anbieter bleiben direkt.",
@@ -3536,6 +3598,8 @@
       "unnamedKey": "Unbenannter Schlüssel",
       "createTitle": "Modellanbieter hinzufügen",
       "editTitle": "Modellanbieter bearbeiten",
+      "copySuffix": "Kopie",
+      "duplicate": "Anbieter duplizieren (neue Kopie ohne Key)",
       "existingApiKeys": "Vorhandene API-Keys",
       "fields": {
         "name": "Name des Anbieters",
@@ -3584,7 +3648,8 @@
         "responses": "Responses nativ",
         "chatCompletions": "Chat-Completions-Protokoll",
         "deepseekResponsesHint": "Starte DeepSeek, um Gateway oder offizielle Direktverbindung zu wählen, und wähle dann Flash oder Pro. Das Gateway listet Modelle in Codex; bei Direktverbindung wird das Gateway übersprungen.",
-        "deepseekChatHint": "DeepSeek Chat Completions nutzt für Alt-Pfade die lokale Gateway-Brücke. Wähle Responses, wenn du das offizielle Codex-Toolverhalten benötigst."
+        "deepseekChatHint": "DeepSeek Chat Completions nutzt für Alt-Pfade die lokale Gateway-Brücke. Wähle Responses, wenn du das offizielle Codex-Toolverhalten benötigst.",
+        "deepseekThirdPartyHint": "Diese Adresse ist kein offizieller DeepSeek-Endpunkt und wird als kompatibler Drittanbieter-Endpunkt behandelt; trage im Modellkatalog die echten Upstream-Modell-IDs ein und verwende keine offiziellen Modellnamen."
       },
       "selectSavedProvider": "Gespeicherte Anbieter",
       "selectSavedApiKey": "Gespeicherte API-Keys",
@@ -3806,7 +3871,17 @@
       "renameApiKeyPrompt": "API-Key umbenennen",
       "renameApiKeySuccess": "API-Key umbenannt",
       "renameApiKeyFailed": "API-Key umbenennen fehlgeschlagen: {{error}}",
-      "existingApiKeysSearch": "Vorhandene API-Keys suchen…"
+      "existingApiKeysSearch": "Vorhandene API-Keys suchen…",
+      "copyConfig": "Konfiguration kopieren (ohne Key)",
+      "copyConfigSuccess": "Anbieter-Konfiguration ohne API-Key kopiert; beim Hinzufügen eines Anbieters einfügen.",
+      "copyConfigFailed": "Anbieter-Konfiguration konnte nicht kopiert werden: {{error}}",
+      "importConfig": "Konfiguration aus Zwischenablage importieren",
+      "importConfigSuccess": "Anbieter-Konfiguration aus der Zwischenablage importiert; API-Key eingeben und speichern.",
+      "importConfigInvalid": "Keine Anbieter-Konfiguration in der Zwischenablage (nutze „Konfiguration kopieren“ auf der Karte).",
+      "importConfigFailed": "Import aus der Zwischenablage fehlgeschlagen: {{error}}",
+      "importConfigPlaceholder": "Nutze „Konfiguration kopieren“ auf der Anbieterkarte und füge den Inhalt hier ein",
+      "importConfigAction": "Konfiguration importieren",
+      "importConfigFromClipboard": "Zwischenablage lesen"
     },
     "quickSwitch": {
       "action": "Anbieter schnell wechseln",
@@ -3987,8 +4062,6 @@
       "standardDesc": "Standardtempo, normaler Verbrauch",
       "fast": "Schnell",
       "fastDesc": "1,5-faches Tempo, höherer Verbrauch",
-      "ultrafast": "Ultraschnell",
-      "ultrafastDesc": "Schnellste Antworten, höherer Verbrauch",
       "saveSuccess": "Tempo aktualisiert",
       "saveFailed": "Tempo konnte nicht gespeichert werden: {{error}}"
     },
@@ -4168,7 +4241,8 @@
         "reasoningEffort": "Denkstärke",
         "reasoningEffortValue": "Denk {{effort}}",
         "serviceTier": "Service-Stufe",
-        "serviceTierValue": "Stufe {{tier}}"
+        "serviceTierValue": "Stufe {{tier}}",
+        "upstreamModel": "Tatsächliches Modell"
       },
       "timeouts": {
         "entryLabel": "Erweitert",
@@ -5410,12 +5484,6 @@
     },
     "quota": {
       "usedOfTotal": "{{used}} / {{total}}​"
-    },
-    "sessions": {
-      "title": "Lokale Sitzungsdateien",
-      "desc": "Lokale Sitzungsdateien — Lokale Daten scannen und Speicherort öffnen.",
-      "empty": "Keine Sitzungsdateien",
-      "open": "Ort öffnen"
     }
   },
   "qoder": {
@@ -6007,7 +6075,7 @@
   "apiKeyFun": {
     "eyebrow": "Vermittler",
     "title": "APIKEY.FUN Relay",
-    "description": "Der offizielle Cockpit-Partner-Relay bietet stabilen, offenen und kosteneffizienten API-Zugriff auf Large Models. Unterstützt werden führende Modelle wie Claude, OpenAI und Gemini; die Nutzung eignet sich für eine einheitliche Konfiguration in Codex, Gemini CLI, Claude Code und weiteren Entwicklerwerkzeugen. Über den exklusiven Cockpit-Link registriert erhalten Sie dauerhaft bis zu 5% Rabatt auf Aufladungen.",
+    "description": "Der offizielle Cockpit-Partner-Relay bietet stabilen, offenen und kosteneffizienten API-Zugriff auf Large Models. Unterstützt werden führende Modelle wie Claude, ChatGPT, Grok, Gemini, Zhipu GLM, Kimi und DeepSeek; die Nutzung eignet sich für eine einheitliche Konfiguration in Codex, Gemini CLI, Claude Code und weiteren Entwicklerwerkzeugen. Über den exklusiven Cockpit-Link registriert erhalten Sie dauerhaft bis zu 5% Rabatt auf Aufladungen.",
     "register": "Exklusiver Link",
     "docs": "Offizielle Doku",
     "viewNow": "Jetzt ansehen",
@@ -6119,13 +6187,34 @@
       "addToClaudeDesktop": "Zu Claude",
       "addToClaudeCli": "Zu Claude CLI",
       "codexShort": "Codex",
-      "claudeShort": "Claude CLI"
+      "claudeShort": "Claude CLI",
+      "deployToCodex": "Schnell zu Codex bereitstellen",
+      "deploying": "Modelle werden geladen…",
+      "deploySuccess": "In Codex bereitgestellt: {{count}} Modelle",
+      "deployFailed": "Bereitstellung fehlgeschlagen: {{error}}",
+      "useKey": "Schlüssel verwenden"
     },
     "prefill": {
       "claudeDesktopReady": "APIKEY.FUN-Daten sind eingetragen. Bitte für Claude bestätigen."
     },
     "copyKey": "Copy Key​",
-    "clearKey": "Clear input​"
+    "clearKey": "Clear input​",
+    "table": {
+      "name": "Name",
+      "usage": "Verbrauch",
+      "status": "Zustand",
+      "createdAt": "Hinzugefügt",
+      "actions": "Aktionen",
+      "statusOk": "Verfügbar",
+      "statusBad": "Fehler",
+      "statusUnknown": "Nicht geprüft"
+    },
+    "config": {
+      "title": "API-Schlüssel verwenden",
+      "family": "Gruppe",
+      "platform": "Aktuelles System",
+      "unsupportedGroup": "Für diese Gruppe gibt es noch keine Ein-Klick-Clients."
+    }
   },
   "grok": {
     "search": "Grok CLI-Konten durchsuchen...",

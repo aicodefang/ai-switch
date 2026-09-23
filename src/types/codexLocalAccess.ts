@@ -125,6 +125,8 @@ export interface CodexLocalAccessCollection {
     string,
     CodexLocalAccessImageGenerationPolicy
   >;
+  /** 生图转发账号池：生图与图片编辑请求只交给这些 OAuth 账号执行。 */
+  imageGenerationAccountIds?: string[];
   gatewayMode: CodexLocalAccessGatewayMode;
   upstreamProxyUrl?: string | null;
   routingStrategy: CodexLocalAccessRoutingStrategy;
@@ -264,6 +266,10 @@ export interface CodexLocalAccessUsageEvent {
   /** 多开实例目录 ID（x-cockpit-instance-id） */
   clientInstanceId?: string;
   modelId: string;
+  /** 客户端请求的模型（保留路由命名空间前缀）。 */
+  requestedModel?: string;
+  /** 实际发送给上游的模型；与请求模型相同时前端只展示一行。 */
+  upstreamModel?: string;
   gatewayMode?: CodexLocalAccessGatewayMode | null;
   requestKind: CodexLocalAccessRequestKind;
   serviceTier?: string | null;
@@ -426,8 +432,6 @@ export interface CodexLocalAccessAppendAccountSkipped {
   accountId: string;
   reason:
     | "not_found"
-    | "chat_completions_api_key"
-    | "deepseek_unsupported"
     | "free_restricted"
     | "pending_oauth"
     | "web_session_quota_only";

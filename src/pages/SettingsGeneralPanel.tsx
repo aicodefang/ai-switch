@@ -980,30 +980,6 @@ export function SettingsGeneralPanel(props: SettingsPageViewProps) {
               <div className="settings-row">
                 <div className="row-label">
                   <div className="row-title">
-                    {t('settings.general.topRightAdVisible', '显示顶部推广')}
-                  </div>
-                  <div className="row-desc">
-                    {t(
-                      'settings.general.topRightAdVisibleDesc',
-                      '关闭后隐藏应用顶部推广位。'
-                    )}
-                  </div>
-                </div>
-                <div className="row-control">
-                  <label className="switch">
-                    <input
-                      type="checkbox"
-                      checked={topRightAdVisible}
-                      onChange={(e) => setTopRightAdVisible(e.target.checked)}
-                    />
-                    <span className="slider"></span>
-                  </label>
-                </div>
-              </div>
-
-              <div className="settings-row">
-                <div className="row-label">
-                  <div className="row-title">
                     {t('settings.general.startupPage', '启动默认页')}
                   </div>
                   <div className="row-desc">

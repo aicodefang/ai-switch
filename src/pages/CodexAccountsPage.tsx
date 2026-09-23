@@ -3,6 +3,8 @@ import { CodexAccountsView } from "./CodexAccountsView";
 import { useCodexAccountsBaseController } from "./useCodexAccountsBaseController";
 import { useCodexAccountsOAuthController } from "./useCodexAccountsOAuthController";
 import { useCodexAccountsAccessController } from "./useCodexAccountsAccessController";
+import { useCodexTempLoginController } from "./useCodexTempLoginController";
+import { useCodexAddGrokController } from "./useCodexAddGrokController";
 import { useCodexAccountsLocalAccessController } from "./useCodexAccountsLocalAccessController";
 import { useCodexAccountsOverviewController } from "./useCodexAccountsOverviewController";
 import { useCodexAccountsRenderers } from "./useCodexAccountsRenderers";
@@ -258,6 +260,7 @@ export function useCodexAccountsPageController() {
     apiModelContextWindowsInput,
     apiProviderPresetId,
     apiSyncModelCatalogToCodex,
+    boundLocalAccessOAuthAccount,
     customSortDropTargetId,
     deviceAuthError,
     deviceAuthInfo,
@@ -371,6 +374,17 @@ export function useCodexAccountsPageController() {
   // ─── Codex-specific: Switch / Import ─────────────────────────────────
 
   const accessController = useCodexAccountsAccessController({ ...baseController, ...oauthController });
+
+  // 官方客户端临时登录（一次性空白 profile，读取后立即关闭并清理）
+  const tempLoginController = useCodexTempLoginController({
+    ...baseController,
+    ...oauthController,
+  });
+  // 「Grok 账号」添加方式：把 Grok 平台账号接入 Codex 供应商账号。
+  const addGrokController = useCodexAddGrokController({
+    ...baseController,
+    ...oauthController,
+  });
   const {
     activeLaunchPreviewAccount,
     clearBatchImportSelection,
@@ -388,6 +402,7 @@ export function useCodexAccountsPageController() {
     handleClearOAuthBinding,
     handleReauthorizeOAuthBinding,
     handleCloseBatchImport,
+    handleCloseLocalImportInstancePicker,
     handleConfirmBatchImport,
     handleCopyCodexCliCommand,
     handleDismissBatchImportTask,
@@ -406,6 +421,7 @@ export function useCodexAccountsPageController() {
     handleSelectEditingApiProviderPreset,
     handleSelectEditingManagedProvider,
     handleSelectEditingManagedProviderApiKey,
+    handleSelectLocalImportInstance,
     handleSelectManagedProvider,
     handleSelectManagedProviderApiKey,
     handleSelectQuickSwitchApiKey,
@@ -414,24 +430,30 @@ export function useCodexAccountsPageController() {
     handleSubmitOAuthBinding,
     handleSubmitQuickSwitch,
     handleTokenImport,
+    handleLaunchPreviewInstanceChange,
     launchPreviewInstanceId,
     launchPreviewInstanceLabel,
     launchPreviewInstanceOptions,
     localAccessLaunchPreviewOpen,
+    localImportBusy,
+    localImportError,
+    localImportInstances,
+    openLocalAccessOAuthBindingModal,
     openOAuthBindingModal,
     openOAuthBindingQuotaReserveEditor,
     performTokenImport,
     prepareCodexCliLaunch,
     resolveBoundOAuthAccount,
+    restoreLaunchPreviewInstanceId,
     selectAllBatchImportAccounts,
     selectReadyBatchImportAccounts,
     setLaunchPreviewAccount,
     setLaunchPreviewInstanceId,
     setLocalAccessLaunchPreviewOpen,
-    toggleBatchImportItem,
-    updateCodexCliWorkingDir,
-    validateOAuthBindingQuotaReserveField,
-  } = accessController;
+   toggleBatchImportItem,
+   updateCodexCliWorkingDir,
+   validateOAuthBindingQuotaReserveField,
+ } = accessController;
 
   // ─── Platform-specific: Presentation ─────────────────────────────────
 
@@ -621,6 +643,7 @@ export function useCodexAccountsPageController() {
     batchImportSessionId,
     batchImportTagsInput,
     batchImportVisibleItems,
+    boundLocalAccessOAuthAccount,
     buildAccountLaunchPreviewActions,
     buildAccountLaunchPreviewSummary,
     buildLocalAccessLaunchPreviewActions,
@@ -743,6 +766,7 @@ export function useCodexAccountsPageController() {
     handleClearOverviewSelection,
     handleCloseBatchImport,
     handleCloseExportModal,
+    handleCloseLocalImportInstancePicker,
     handleCodexBatchDelete,
     handleConfirmBatchImport,
     handleConfirmConsumeResetCredit,
@@ -759,6 +783,7 @@ export function useCodexAccountsPageController() {
     handleExecuteCodexCli,
     handleExecuteLaunchPreview,
     handleExecuteLocalAccessLaunchPreview,
+    handleLaunchPreviewInstanceChange,
     handleExport,
     handleExportAuthFailedAccounts,
     handleFetchApiModelCatalog,
@@ -798,6 +823,7 @@ export function useCodexAccountsPageController() {
     handleSelectEditingApiProviderPreset,
     handleSelectEditingManagedProvider,
     handleSelectEditingManagedProviderApiKey,
+    handleSelectLocalImportInstance,
     handleSelectManagedProvider,
     handleSelectManagedProviderApiKey,
     handleSelectQuickSwitchApiKey,
@@ -854,6 +880,9 @@ export function useCodexAccountsPageController() {
     stopInstanceGateway,
     restartInstanceGateway,
     localAccessLaunchPreviewOpen,
+    localImportBusy,
+    localImportError,
+    localImportInstances,
     localAccessModalMode,
     localAccessModalSelectedIds,
     localAccessPortKilling,
@@ -912,6 +941,7 @@ export function useCodexAccountsPageController() {
     openCodexApiServicePage,
     openFormattedExportSavedDirectory,
     openFullQuotaWakeupTestModal,
+    openLocalAccessOAuthBindingModal,
     openOAuthBindingModal,
     openOAuthBindingQuotaReserveEditor,
     openPendingOAuthNoteModal,
@@ -1010,6 +1040,7 @@ export function useCodexAccountsPageController() {
     setGroupDeleteError,
     setGroupQuickAddGroupId,
     setIncludeExportSensitiveNotes,
+    restoreLaunchPreviewInstanceId,
     setLaunchPreviewAccount,
     setLaunchPreviewInstanceId,
     setLocalAccessLaunchPreviewOpen,
@@ -1063,6 +1094,8 @@ export function useCodexAccountsPageController() {
     store,
     syncImportedToApiService,
     t,
+    ...tempLoginController,
+    ...addGrokController,
     tagDeleteConfirm,
     tagDeleteConfirmError,
     tagDeleteConfirmErrorScrollKey,

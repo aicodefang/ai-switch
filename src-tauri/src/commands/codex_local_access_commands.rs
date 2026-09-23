@@ -284,6 +284,14 @@ pub async fn codex_local_access_update_image_generation_model(
     codex_local_access::update_local_access_image_generation_model(image_generation_model).await
 }
 
+/// 更新 API 服务的生图转发账号池（生图请求交给所选 OAuth 账号执行）。
+#[tauri::command]
+pub async fn codex_local_access_update_image_generation_accounts(
+    account_ids: Vec<String>,
+) -> Result<CodexLocalAccessState, String> {
+    codex_local_access::update_local_access_image_generation_accounts(account_ids).await
+}
+
 #[tauri::command]
 pub async fn codex_local_access_update_access_scope(
     access_scope: CodexLocalAccessScope,

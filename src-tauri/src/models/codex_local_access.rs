@@ -436,6 +436,12 @@ pub struct CodexLocalAccessModelRoute {
     pub namespace: String,
     pub provider_account_id: String,
     pub provider_gateway: CodexLocalAccessProviderGateway,
+    /// 原生 provider 路由：非空时 sidecar 直接交给该 provider 的执行器（当前为 xai）。
+    ///
+    /// Grok 供应商账号没有上游 API Key，请求不能走 Provider Gateway 直连，
+    /// 只能由 sidecar 用绑定的 Grok 账号凭据发出，因此这类路由标记为原生 provider。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub native_provider: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -728,6 +734,12 @@ pub struct CodexLocalAccessUsageEvent {
     pub client_instance_id: String,
     #[serde(default)]
     pub model_id: String,
+    /// 客户端请求的模型（保留路由命名空间前缀，如 `cpa/gpt-5.5`）。
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub requested_model: String,
+    /// 实际发送给上游的模型（账号映射与路由改写之后）。
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub upstream_model: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gateway_mode: Option<CodexLocalAccessGatewayMode>,
     #[serde(default)]

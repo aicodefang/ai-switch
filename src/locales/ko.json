@@ -86,6 +86,7 @@
     "viewError": "오류 보기"
   },
   "common": {
+    "retry": "다시 시도",
     "quotaRefreshScheduler": {
       "busy": "새로고침 대기열이 가득 찼습니다. 잠시 후 다시 시도하세요.",
       "timeout": "할당량 새로고침 시간이 초과되었습니다. 다시 시도하세요.",
@@ -123,6 +124,8 @@
     "windowsOperation": {
       "title": "Windows 작업이 완료되지 않음",
       "accessDeniedDescription": "Windows가 작업을 거부했습니다. 대상이 더 높은 권한으로 실행 중이거나 보호된 위치에 있을 수 있습니다.",
+      "storeLaunchBlockedDescription": "Windows에서 현재 설정된 Codex 클라이언트를 실행할 수 없습니다. 스토어 패키지 폴더가 업데이트로 교체되었거나 더 이상 실행이 허용되지 않을 수 있습니다. 잘못된 계정이 열리지 않도록 직접 실행을 차단했습니다. \"경로 재감지 후 재시도\"를 사용하고, 계속 실패하면 이 인스턴스의 실행 방식을 CLI로 변경하세요.",
+      "repairPath": "경로 재감지 후 재시도",
       "fileInUseDescription": "대상 파일을 다른 프로그램에서 사용 중입니다. 해당 프로그램을 닫고 다시 시도하세요.",
       "programNotFoundDescription": "작업에 필요한 프로그램을 찾을 수 없습니다. 설치 상태나 설정된 경로를 확인하세요.",
       "portDeniedDescription": "Windows가 포트 접근을 차단했습니다. 시스템 정책이나 다른 프로그램에서 사용 중일 수 있습니다.",
@@ -362,7 +365,11 @@
     "deleteTagWarning": "모든 계정에서 이 태그를 삭제하시겠습니까?",
     "expand": "펼치기",
     "processing": "처리 중...",
-    "selectAll": "전체 선택"
+    "selectAll": "전체 선택",
+    "quota": {
+      "weeklyWindow": "주간"
+    },
+    "optional": "(선택)"
   },
   "nav": {
     "overview": "Antigravity IDE​",
@@ -610,7 +617,7 @@
         "summary": "접두사가 없는 모델은 현재 구독을 사용하고, cpa/gpt-5.5와 같은 접두사가 있는 모델은 타사 API로 전달됩니다. 둘 다 로컬 라우팅 서비스에 의존합니다.",
         "rowSummary": "접두사가 없는 모델은 현재 구독을 사용하고, cpa/gpt-5.5와 같은 접두사가 있는 모델은 타사 API로 전달됩니다. 둘 다 로컬 라우팅 서비스에 의존합니다.",
         "confirmEnableTitle": "타사 API 라우팅을 활성화하시겠습니까?",
-        "confirmEnableMessage": "Codex 모델 요청은 로컬 Cockpit Tools 서비스를 통해 라우팅됩니다. 서비스가 실행 중이지 않으면 구독 및 타사 모델을 모두 사용할 수 없습니다. 저장 시 로그인 시 자동 실행이 활성화됩니다.\n\n라우팅을 활성화하시겠습니까?",
+        "confirmEnableMessage": "Codex 모델 요청은 로컬 Cockpit Tools 서비스를 통해 라우팅됩니다. 서비스가 실행 중이지 않으면 구독 및 타사 모델을 모두 사용할 수 없습니다.\n\n라우팅을 활성화하시겠습니까?",
         "confirmEnableAction": "활성화",
         "confirmDisableTitle": "타사 API 라우팅을 비활성화하시겠습니까?",
         "confirmDisableMessage": "이 변경 사항이 적용되면 로컬 게이트웨이가 중지되고 공식 구독 직접 연결이 복원되며 타사 모델을 사용할 수 없게 됩니다.\n\n라우팅을 비활성화하시겠습니까?",
@@ -841,10 +848,11 @@
       "codexSyncWsl": "Codex를 WSL에 동기화",
       "codexSyncWslDesc": "기본 Codex 계정을 전환한 뒤 auth.json과 config.toml도 WSL의 Codex 디렉터리에 씁니다.",
       "codexAppUiInjection": "API 서비스 할당량",
-      "codexAppUiInjectionDesc": "Codex 인스턴스를 다시 시작하면 입력창 아래에 Cockpit Tools API 서비스의 계정 수와 주간 및 5시간 할당량을 표시합니다. DeepSeek 계정을 바인딩한 인스턴스는 대신 해당 계정 잔액을 표시합니다. Cockpit Tools를 백그라운드에서 계속 실행해야 하며, 완전히 종료하거나 네트워크를 사용할 수 없으면 업데이트가 중지됩니다.",
+      "codexAppUiInjectionDesc": "Codex 인스턴스를 다시 시작하면 입력창 아래 할당량 배지가 선택한 모델에 따라 바뀝니다. DeepSeek는 계정 잔액, Grok은 Grok 할당량, GPT는 주간 및 5시간 할당량을 표시합니다. Cockpit Tools를 백그라운드에서 계속 실행해야 하며, 완전히 종료하거나 네트워크를 사용할 수 없으면 업데이트가 중지됩니다.",
       "codexAppUiInjectionPoolLabel": "계정",
       "codexAppUiInjectionWeeklyLabel": "주",
       "codexAppUiInjectionFiveHourLabel": "5시간",
+      "codexAppUiInjectionMissingLabel": "—",
       "codexWslConfigDir": "WSL Codex 디렉터리",
       "codexWslConfigDirDesc": "WSL 안의 .codex 디렉터리를 입력하세요. \\\\wsl.localhost\\ 경로를 지원합니다.",
       "codexWslConfigDirPlaceholder": "예: \\\\wsl.localhost\\Ubuntu-24.04\\home\\user\\.codex",
@@ -2189,10 +2197,18 @@
     "refreshAllSuccess": "새로고침 완료, {{count}}개 계정 성공",
     "refreshAllPartialFailed": "새로고침 완료, {{success}} / {{total}}개 계정 성공, 일부 실패",
     "launchPreview": {
+      "configLoading": "인스턴스 설정을 불러오는 중…",
+      "configRefreshing": "인스턴스 설정을 확인 중입니다. 기존 내용은 계속 볼 수 있습니다.",
+      "configLoadTimeout": "인스턴스 설정 불러오기 시간이 초과되었습니다. 다시 시도하세요.",
+      "configChanged": "다른 곳에서 인스턴스 설정이 변경되었습니다. 저장하거나 시작하기 전에 다시 불러오세요.",
       "accessModeTitle": "시작 방식",
       "prosLabel": "장점:",
       "consLabel": "단점:",
-      "accessModeDescription": "DeepSeek 시작 방식을 선택합니다. 모델 전환, OAuth, 이미지 전달 지원이 다릅니다.",
+      "accessModeDescription": "이 공급자의 시작 방식을 선택하세요. 방식에 따라 모델 전환, OAuth, 이미지 생성 전달이 다릅니다.",
+      "accessModeApiServiceFixed": "API 서비스는 항상 게이트웨이 모드를 사용하며 변경할 수 없습니다.",
+      "imageGenApiServiceFixed": "API 서비스의 이미지 생성 전달은 “API 서비스 → 설정”에서 일괄 관리합니다. 여기서는 현재 상태만 표시합니다.",
+      "oauthBindingApiServiceHint": "API 서비스의 OAuth 연결은 “API 서비스 → 설정”에서 일괄 관리합니다. 여기서는 진입 상태만 표시합니다.",
+      "oauthBindingApiServiceManaged": "API 서비스 계정 풀에서 관리",
       "accessModeGatewayPros": "1: Codex 안에서 모델을 전환할 수 있습니다\n2: OAuth 계정을 연결해 원격 압축, 브라우저 제어 등 OAuth 기능을 사용할 수 있습니다\n3: GPT 계정을 설정해 이미지 생성을 전달할 수 있습니다",
       "accessModeGatewayCons": "1: 인스턴스 로컬 게이트웨이가 필요해 직접 연결보다 약간 느립니다",
       "accessModeDirectPros": "1: 게이트웨이를 거치지 않아 가장 빠릅니다",
@@ -2355,6 +2371,7 @@
       "apiKey": "키",
       "statusRunning": "실행 중",
       "statusStopped": "중지됨",
+      "internalSchedulerLabel": "내부 스케줄러",
       "statusDisabled": "비활성화됨",
       "emptyMembers": "컬렉션에 계정이 없습니다",
       "footerHint": "접근 범위: {{scope}}",
@@ -2385,8 +2402,6 @@
         "restrictFreeToggle": "Free 계정 제한",
         "sessionAffinityConfirmTitle": "세션 선호를 켤까요?",
         "sessionAffinityDescription": "켜면 같은 대화가 가능한 한 같은 계정을 계속 사용합니다. 계정을 사용할 수 없으면 라우팅에 따라 전환되며, 만료 후에는 계정을 다시 선택합니다.",
-        "chatApiKeyUnsupported": "Chat Completions 미지원",
-        "deepseekUnsupported": "DeepSeek 미지원",
         "pendingOauthUnsupported": "미인증 추가 불가",
         "freeNoticeRestricted": "Free 계정은 제한됩니다. 선택하려면 이 옵션을 끄세요.",
         "freeNoticeUnstable": "Free 계정 프록시는 불안정할 수 있습니다. 주의해서 사용하세요.",
@@ -2438,6 +2453,9 @@
       "summaryMeta": "{{count}}개 계정 · {{scope}}",
       "summaryMetaUnconfigured": "미설정 · {{scope}}",
       "memberTitle": "컬렉션 멤버",
+      "memberPlatformLabel": "플랫폼",
+      "memberPlatformAll": "모든 플랫폼",
+      "memberPlatformGrok": "Grok 플랫폼 계정",
       "imagePolicy": {
         "label": "이미지 정책",
         "inherit": "이미지: 자동",
@@ -2622,6 +2640,8 @@
       "requestLogSuccess": "성공",
       "requestLogFailed": "실패",
       "requestLogTokens": "{{value}} 토큰",
+      "imageForwardLabel": "GPT 이미지 생성 활성화",
+      "imageForwardHint": "활성화한 뒤 GPT 계정을 선택하면 이미지 생성·편집 요청은 선택한 계정에서 실행되며 해당 계정의 할당량을 사용합니다. 대화 요청은 계속 계정 풀로 처리됩니다.",
       "imageGenerationMode": {
         "enabled": "사용",
         "imagesOnly": "이미지만",
@@ -2691,7 +2711,8 @@
           "recover": "복구",
           "recovering": "복구 중…",
           "recoverAll": "모두 복구",
-          "resyncPool": "계정 풀 다시 동기화"
+          "resyncPool": "계정 풀 다시 동기화",
+          "reauthorizeHint": "계정 자격 증명이 만료되었습니다. 공식 로그인으로 다시 인증하세요. 스케줄러 초기화만으로는 복구되지 않습니다."
         }
       },
       "testChatModel": "모델",
@@ -2710,8 +2731,41 @@
       "desc": "~/.codex/auth.json에서 현재 로그인된 계정 가져오기",
       "import": "로컬 계정 가져오기"
     },
+    "tempLogin": {
+      "tab": "공식 로그인",
+      "desc": "로그인은 전적으로 공식 데스크톱 클라이언트에서 이루어집니다. 인증 URL은 공식 클라이언트가 생성하고, 인증 콜백과 토큰 교환도 공식 클라이언트가 처리합니다. Cockpit은 인증 콜백에 관여하지 않으며, 공식 클라이언트가 로그인 정보를 저장한 뒤에 읽어서 가져옵니다.",
+      "note": "임시 프로필은 앱 데이터 디렉터리 아래의 빈 폴더로 만들어지며, 계정을 읽은 뒤 클라이언트 실행 디렉터리와 키체인 항목까지 함께 삭제됩니다. 기본 인스턴스와 다중 인스턴스는 영향을 받지 않습니다.",
+      "start": "공식 클라이언트 열고 로그인",
+      "cancel": "로그인 취소",
+      "cancelling": "공식 로그인을 취소하는 중…",
+      "waitingHint": "공식 클라이언트에서 로그인을 완료하세요. 로그인 정보가 감지되면 자동으로 닫힙니다(최대 10분).",
+      "cancelled": "공식 로그인을 취소했고 임시 프로필을 정리했습니다.",
+      "failed": "공식 로그인 실패: {{error}}",
+      "success": "계정을 가져왔습니다: {{email}}",
+      "intercept": {
+        "toggle": "브라우저 이동을 가로채 인증 URL을 여기에 표시",
+        "hint": "사용하면 공식 클라이언트에서 '계속'을 눌러도 브라우저가 열리지 않고, 공식 클라이언트가 만든 인증 URL만 여기에 표시되어 복사할 수 있습니다. 원하는 브라우저에서 로그인한 뒤의 인증 콜백과 토큰 교환은 계속 공식 데스크톱 클라이언트가 처리하며, Cockpit은 인증에 관여하지 않습니다. 끄면 공식 기본 동작으로 진행됩니다."
+      },
+      "authUrl": {
+        "label": "인증 URL(공식 클라이언트 생성)",
+        "open": "기본 브라우저로 열기",
+        "openFailed": "인증 URL을 열지 못했습니다: {{error}}",
+        "hint": "URL은 공식 클라이언트가 만들며 이 컴퓨터의 브라우저에서만 열 수 있습니다. 로그인이 끝날 때까지 공식 창을 닫지 마세요.",
+        "unavailable": "이번에는 인증 URL을 가져오지 못했습니다. 공식 클라이언트가 평소처럼 브라우저를 열므로 거기서 로그인하세요."
+      },
+      "phase": {
+        "prepare": "임시 프로필 준비",
+        "launch": "공식 클라이언트 열기",
+        "wait": "로그인 완료 대기",
+        "import": "로그인 정보 읽기",
+        "close": "공식 클라이언트 닫기",
+        "clean": "임시 프로필 정리"
+      }
+    },
     "import": {
       "localDesc": "로컬에 로그인된 세션에서 Codex 계정을 가져오기.",
+      "localInstanceTitle": "인스턴스 선택",
+      "localInstanceDesc": "Codex 인스턴스가 여러 개 있습니다. 로컬 계정을 가져올 인스턴스를 선택하세요:",
       "importing": "로컬 계정 가져오는 중...",
       "successMsg": "가져오기 성공: {{email}}"
     },
@@ -2752,6 +2806,7 @@
       "resetCreditGrantedAt": "지급",
       "resetCreditExpiresAt": "만료",
       "windowAccountCostHint": "계정 과금(모델 가격 추산)",
+      "windowEstimatedFullCostHint": "사용 비율로 환산한 이 윈도우 만료 시 예상 계정 청구 금액",
       "windowUserCostHint": "사용자 과금",
       "windowWeeks": "{{count}}주 할당량",
       "windowDays": "{{count}}일 할당량",
@@ -2846,7 +2901,7 @@
       "heroSubtitle": "OAuth Codex 계정용 시간 기반 깨우기 작업을 만들고, 즉시 테스트를 실행하며, 모든 트리거 기록을 한곳에서 확인할 수 있습니다.",
       "runtimeReady": "Codex CLI 준비됨",
       "runtimeMissing": "Codex CLI 필요",
-      "runtimeCardTitle": "Codex CLI 환경",
+      "runtimeCardTitle": "실행 방식",
       "runtimeUnknownPath": "경로를 찾지 못했습니다",
       "runtimeUnchecked": "최신 상태를 가져오려면 다시 확인하세요",
       "runtimeVersion": "버전 {{version}}",
@@ -3025,11 +3080,7 @@
       "runtimeConfigCodexCliPlaceholder": "예: /opt/homebrew/bin/codex",
       "runtimeConfigNodeLabel": "node 경로",
       "runtimeConfigNodePlaceholder": "예: /opt/homebrew/bin/node",
-      "runtimeConfigApplyHint": "변경 후 \"CLI 다시 확인\"을 누르면 저장되고 즉시 적용됩니다.",
-      "officialChatRuntimeTitle": "공식 직접 연결",
-      "officialChatRuntimePath": "ChatGPT 공식 Codex 채팅",
-      "officialChatRuntimeSource": "공식 직접 연결",
-      "officialChatRuntimeMessage": "OAuth 계정 직접 대화"
+      "runtimeConfigApplyHint": "변경 후 \"CLI 다시 확인\"을 누르면 저장되고 즉시 적용됩니다."
     },
     "sessionManager": {
       "title": "세션 관리",
@@ -3483,6 +3534,9 @@
         }
       }
     },
+    "grokAdd": {
+      "tab": "Grok 계정"
+    },
     "deepSeek": {
       "start": {
         "title": "DeepSeek 시작",
@@ -3518,6 +3572,13 @@
       }
     },
     "modelProviders": {
+      "keyModels": {
+        "title": "Key 모델",
+        "override": "개별 설정",
+        "help": "끄면 공급자의 모델 설정을 따릅니다. 켜면 이 Key만 별도의 모델 목록과 기능을 사용합니다.",
+        "saved": "Key 모델 설정을 저장했습니다. 실행 중인 클라이언트를 다시 시작하면 적용됩니다.",
+        "inherit": "공급자 설정 상속"
+      },
       "tab": "모델 공급자",
       "desc": "모델 공급자와 여러 API 키를 한곳에서 관리하고, Codex API 키 계정을 추가할 때 바로 재사용하세요.",
       "add": "공급자 추가",
@@ -3526,6 +3587,7 @@
       "emptyTitle": "아직 모델 공급자가 없습니다",
       "emptyDesc": "시작하려면 오른쪽 상단의 \"공급자 추가\"를 클릭하세요.",
       "baseUrl": "기본 URL",
+      "customEndpointHint": "사용자 지정 엔드포인트 사용 중: 이 주소는 “{{preset}}”의 공식 엔드포인트가 아닙니다. 서드파티 호환 엔드포인트로 처리되므로 프로토콜과 모델 목록을 업스트림에 맞게 설정하세요.",
       "modelCatalog": "모델",
       "modelCatalogEmpty": "모델 카탈로그 없음",
       "gatewayHint": "타사 공급자는 인스턴스 격리와 프로토콜 변환을 위해 로컬 게이트웨이로 시작됩니다. 공식 OpenAI 공급자는 직접 연결을 유지합니다.",
@@ -3536,6 +3598,8 @@
       "unnamedKey": "이름 없는 키",
       "createTitle": "모델 공급자 추가",
       "editTitle": "모델 공급자 편집",
+      "copySuffix": "복사본",
+      "duplicate": "공급자 복제 (키 없는 새 복사본)",
       "existingApiKeys": "기존 API 키",
       "fields": {
         "name": "공급자 이름",
@@ -3584,7 +3648,8 @@
         "responses": "Responses 네이티브",
         "chatCompletions": "Chat Completions 프로토콜",
         "deepseekResponsesHint": "DeepSeek을 시작하여 게이트웨이 또는 공식 직접 연결을 선택한 다음 Flash 또는 Pro를 선택하세요. 게이트웨이는 Codex에 모델을 표시하고, 직접 연결은 게이트웨이를 거치지 않습니다.",
-        "deepseekChatHint": "DeepSeek Chat Completions는 레거시 경로에 로컬 게이트웨이 브리지를 사용합니다. 공식 Codex 도구 동작이 필요하면 Responses를 선택하세요."
+        "deepseekChatHint": "DeepSeek Chat Completions는 레거시 경로에 로컬 게이트웨이 브리지를 사용합니다. 공식 Codex 도구 동작이 필요하면 Responses를 선택하세요.",
+        "deepseekThirdPartyHint": "이 주소는 DeepSeek 공식 엔드포인트가 아니므로 서드파티 호환 엔드포인트로 처리됩니다. 모델 목록에는 업스트림의 실제 모델 ID를 입력하고 공식 모델 이름은 사용하지 마세요."
       },
       "selectSavedProvider": "저장된 공급자",
       "selectSavedApiKey": "저장된 API 키",
@@ -3806,7 +3871,17 @@
       "renameApiKeyPrompt": "API 키 이름 변경",
       "renameApiKeySuccess": "API 키 이름 변경됨",
       "renameApiKeyFailed": "API 키 이름 변경 실패: {{error}}",
-      "existingApiKeysSearch": "기존 API Key 검색…"
+      "existingApiKeysSearch": "기존 API Key 검색…",
+      "copyConfig": "설정 복사(키 제외)",
+      "copyConfigSuccess": "API 키를 제외한 공급자 설정을 복사했습니다. 공급자 추가 시 붙여넣으세요.",
+      "copyConfigFailed": "설정 복사 실패: {{error}}",
+      "importConfig": "클립보드에서 설정 가져오기",
+      "importConfigSuccess": "클립보드에서 설정을 가져왔습니다. API 키를 입력하고 저장하세요.",
+      "importConfigInvalid": "클립보드에 설정이 없습니다(카드의 '설정 복사' 사용).",
+      "importConfigFailed": "클립보드 가져오기 실패: {{error}}",
+      "importConfigPlaceholder": "카드에서 '설정 복사' 후 내용을 여기에 붙여넣으세요",
+      "importConfigAction": "설정 가져오기",
+      "importConfigFromClipboard": "클립보드 읽기"
     },
     "quickSwitch": {
       "action": "공급자 빠른 전환",
@@ -3987,8 +4062,6 @@
       "standardDesc": "기본 속도, 일반 사용량",
       "fast": "빠름",
       "fastDesc": "1.5배 속도, 사용량 증가",
-      "ultrafast": "초고속",
-      "ultrafastDesc": "가장 빠른 응답, 사용량 최대",
       "saveSuccess": "속도가 업데이트되었습니다",
       "saveFailed": "속도 저장 실패: {{error}}"
     },
@@ -4168,7 +4241,8 @@
         "reasoningEffort": "추론 강도",
         "reasoningEffortValue": "추론 {{effort}}",
         "serviceTier": "서비스 등급",
-        "serviceTierValue": "등급 {{tier}}"
+        "serviceTierValue": "등급 {{tier}}",
+        "upstreamModel": "실제 모델"
       },
       "timeouts": {
         "entryLabel": "고급",
@@ -5410,12 +5484,6 @@
     },
     "quota": {
       "usedOfTotal": "{{used}} / {{total}}​"
-    },
-    "sessions": {
-      "title": "로컬 세션 파일",
-      "desc": "로컬 세션 파일 — 로컬 데이터에서 스캔해 위치를 엽니다.",
-      "empty": "세션 파일을 찾을 수 없음",
-      "open": "위치 열기"
     }
   },
   "qoder": {
@@ -6007,7 +6075,7 @@
   "apiKeyFun": {
     "eyebrow": "중계 서비스",
     "title": "APIKEY.FUN 릴레이",
-    "description": "Cockpit 공식 파트너 중계 서비스로, 안정적이고 개방적이며 비용 효율적인 대형 모델 API 접속을 제공합니다. Claude, OpenAI, Gemini 등 주요 모델을 지원하며 Codex, Gemini CLI, Claude Code 및 기타 개발 도구에서 통합 구성하기에 적합합니다. Cockpit 전용 링크로 가입하면 충전 금액에 대해 영구적으로 최대 5% 할인을 받을 수 있습니다.",
+    "description": "Cockpit 공식 파트너 중계 서비스로, 안정적이고 개방적이며 비용 효율적인 대형 모델 API 접속을 제공합니다. Claude, ChatGPT, Grok, Gemini, Zhipu GLM, Kimi, DeepSeek 등 주요 모델을 지원하며 Codex, Gemini CLI, Claude Code 및 기타 개발 도구에서 통합 구성하기에 적합합니다. Cockpit 전용 링크로 가입하면 충전 금액에 대해 영구적으로 최대 5% 할인을 받을 수 있습니다.",
     "register": "전용 가입 링크",
     "docs": "공식 문서",
     "viewNow": "바로 보기",
@@ -6119,13 +6187,34 @@
       "addToClaudeDesktop": "Claude에 추가",
       "addToClaudeCli": "Claude CLI에 추가",
       "codexShort": "Codex",
-      "claudeShort": "Claude CLI"
+      "claudeShort": "Claude CLI",
+      "deployToCodex": "Codex에 빠른 배포",
+      "deploying": "모델을 가져오는 중…",
+      "deploySuccess": "Codex에 배포됨: 모델 {{count}}개",
+      "deployFailed": "배포 실패: {{error}}",
+      "useKey": "키 사용"
     },
     "prefill": {
       "claudeDesktopReady": "APIKEY.FUN 설정을 채웠습니다. Claude에 추가하려면 확인하세요."
     },
     "copyKey": "Copy Key​",
-    "clearKey": "Clear input​"
+    "clearKey": "Clear input​",
+    "table": {
+      "name": "이름",
+      "usage": "사용량",
+      "status": "상태",
+      "createdAt": "추가됨",
+      "actions": "작업",
+      "statusOk": "사용 가능",
+      "statusBad": "오류",
+      "statusUnknown": "확인 안 됨"
+    },
+    "config": {
+      "title": "API 키 사용",
+      "family": "그룹",
+      "platform": "현재 시스템",
+      "unsupportedGroup": "이 그룹에는 아직 원클릭으로 쓸 수 있는 클라이언트가 없습니다."
+    }
   },
   "grok": {
     "search": "Grok CLI 계정 검색...",

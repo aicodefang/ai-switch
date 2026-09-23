@@ -79,7 +79,7 @@ func TestUsageServiceTierUsesClientRequestedTier(t *testing.T) {
 	if got := usageServiceTier(coreusage.Record{RequestServiceTier: "priority"}, ""); got != "priority" {
 		t.Fatalf("deprecated request tier = %q, want priority", got)
 	}
-	// 官方“超高速”档位必须原样保留，不能落回标准档。
+	// Preserve explicitly requested tiers as raw values, even when not advertised.
 	if got := usageServiceTier(coreusage.Record{ServiceTier: "ultrafast"}, ""); got != "ultrafast" {
 		t.Fatalf("client ultrafast tier = %q, want ultrafast", got)
 	}
@@ -284,7 +284,7 @@ func TestSplitResponsesConcatenatedJSONDocumentsRejectsMalformedPayload(t *testi
 }
 
 func TestCodexClientModelsResponseShape(t *testing.T) {
-	response := buildCodexClientModelsResponse([]string{"gpt-5.4", "gpt-image-2", codexAutoReviewModel}, &apiKeySpec{}, nil)
+	response := buildCodexClientModelsResponse([]string{"gpt-5.4", "gpt-image-2", codexAutoReviewModel}, &apiKeySpec{}, nil, nil)
 	models, ok := response["models"].([]map[string]any)
 	if !ok {
 		t.Fatalf("models response should contain a models array: %#v", response["models"])
@@ -329,8 +329,145 @@ func TestCodexClientModelsResponseShape(t *testing.T) {
 	}
 }
 
+func TestCodexClientModelsShareUnifiedCompactionHash(t *testing.T) {
+	response := buildCodexClientModelsResponse(
+		[]string{"gpt-5.5", "gpt-5.6-sol", "gpt-6-astra", "gpt-6-sol", "gpt-6-luna", "deepseek-flash", "custom-third-party"},
+		&apiKeySpec{},
+		nil,
+		nil,
+	)
+	models, ok := response["models"].([]map[string]any)
+	if !ok {
+		t.Fatalf("models response should contain a models array: %#v", response["models"])
+	}
+	if len(models) != 7 {
+		t.Fatalf("expected 7 models, got %d", len(models))
+	}
+	for _, model := range models {
+		if model["comp_hash"] != codexClientCompactionHash {
+			t.Fatalf("model %v comp_hash = %#v, want %q", model["slug"], model["comp_hash"], codexClientCompactionHash)
+		}
+	}
+}
+
+func TestCodexClientModelsKeepApplyPatchForXAIModels(t *testing.T) {
+	m := &manifest{
+		Accounts: []accountSpec{
+			{ID: "grok-account", AuthID: "grok-account.json", Provider: "xai", ModelIDs: []string{"grok-4.6"}},
+		},
+	}
+	response := buildCodexClientModelsResponse([]string{"grok-4.6", "custom-third-party"}, &apiKeySpec{}, nil, m)
+	models, ok := response["models"].([]map[string]any)
+	if !ok {
+		t.Fatalf("models response should contain a models array: %#v", response["models"])
+	}
+	grok := findCodexClientModelForTest(models, "grok-4.6")
+	if grok == nil {
+		t.Fatal("expected grok-4.6 in the Codex client catalog")
+	}
+	if got := stringFromAny(grok["apply_patch_tool_type"]); got != "freeform" {
+		t.Fatalf("grok-4.6 apply_patch_tool_type = %q, want freeform; entry=%#v", got, grok)
+	}
+	// 只有 xai-only 模型补 freeform 声明，其它第三方模型保持原目录形态。
+	other := findCodexClientModelForTest(models, "custom-third-party")
+	if other == nil {
+		t.Fatal("expected custom-third-party in the Codex client catalog")
+	}
+	if _, exists := other["apply_patch_tool_type"]; exists {
+		t.Fatalf("non-xai model must not declare apply_patch: %#v", other)
+	}
+}
+
+func TestThirdPartyModelsDeclareMultiAgentV2InCodexCatalog(t *testing.T) {
+	m := &manifest{
+		Accounts: []accountSpec{
+			{ID: "grok-account", AuthID: "grok-account.json", Provider: "xai", ModelIDs: []string{"grok-4.6"}},
+		},
+	}
+	enabled := &config.Config{}
+	enabled.Codex.OptimizeMultiAgentV2 = true
+
+	response := buildCodexClientModelsResponse([]string{"grok-4.6", "gpt-5.5"}, &apiKeySpec{}, nil, m)
+	applyThirdPartyMultiAgentV2Catalog(response, &apiKeySpec{}, m, enabled)
+	models, ok := response["models"].([]map[string]any)
+	if !ok {
+		t.Fatalf("models response should contain a models array: %#v", response["models"])
+	}
+	grok := findCodexClientModelForTest(models, "grok-4.6")
+	if grok == nil {
+		t.Fatal("expected grok-4.6 in the Codex client catalog")
+	}
+	if got := stringFromAny(grok["multi_agent_version"]); got != "v2" {
+		t.Fatalf("grok-4.6 multi_agent_version = %q, want v2", got)
+	}
+	if official := findCodexClientModelForTest(models, "gpt-5.5"); official != nil {
+		if got := stringFromAny(official["multi_agent_version"]); got != "" {
+			t.Fatalf("official model multi_agent_version = %q, want its own declaration", got)
+		}
+	}
+
+	// 供应商网关模式下该 Key 的模型全部走第三方上游，同样声明 v2。
+	gatewaySpec := &apiKeySpec{ProviderGateway: &providerGatewaySpec{UpstreamModel: "deepseek-v4-flash"}}
+	gatewayResponse := buildCodexClientModelsResponse([]string{"gpt-5.5"}, gatewaySpec, nil, nil)
+	applyThirdPartyMultiAgentV2Catalog(gatewayResponse, gatewaySpec, nil, enabled)
+	gatewayModels, _ := gatewayResponse["models"].([]map[string]any)
+	gatewayModel := findCodexClientModelForTest(gatewayModels, "gpt-5.5")
+	if gatewayModel == nil || stringFromAny(gatewayModel["multi_agent_version"]) != "v2" {
+		t.Fatalf("provider-gateway model multi_agent_version = %#v, want v2", gatewayModel)
+	}
+
+	// 开关关闭时保持原目录形态。
+	disabledResponse := buildCodexClientModelsResponse([]string{"grok-4.6"}, &apiKeySpec{}, nil, m)
+	applyThirdPartyMultiAgentV2Catalog(disabledResponse, &apiKeySpec{}, m, &config.Config{})
+	disabledModels, _ := disabledResponse["models"].([]map[string]any)
+	disabledGrok := findCodexClientModelForTest(disabledModels, "grok-4.6")
+	if got := stringFromAny(disabledGrok["multi_agent_version"]); got != "" {
+		t.Fatalf("multi_agent_version = %q, want no declaration when the optimization is off", got)
+	}
+}
+
+func TestCodexModelsEndpointDeclaresMultiAgentV2ForThirdPartyModels(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	m := deepseekAutomaticRoutingManifest(t, "http://127.0.0.1:1")
+	cfg := &config.Config{}
+	cfg.Codex.OptimizeMultiAgentV2 = true
+	server := &relayServer{
+		manifest: m,
+		cfg:      cfg,
+		policy:   &requestPolicy{manifest: m, cfg: cfg, tracker: newRequestUsageTracker()},
+	}
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/v1/models?client_version=1", nil)
+	request.Header.Set("Authorization", "Bearer client-key")
+	server.router().ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+	var payload struct {
+		Models []map[string]any `json:"models"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode models response: %v", err)
+	}
+	found := false
+	for _, model := range payload.Models {
+		slug, _ := model["slug"].(string)
+		if slug != "deepseek-flash" {
+			continue
+		}
+		found = true
+		if got := stringFromAny(model["multi_agent_version"]); got != "v2" {
+			t.Fatalf("deepseek-flash multi_agent_version = %q, want v2", got)
+		}
+	}
+	if !found {
+		t.Fatalf("deepseek-flash missing from Codex models response: %#v", payload.Models)
+	}
+}
+
 func TestCodexClientModelsResponsePreserves56Template(t *testing.T) {
-	response := buildCodexClientModelsResponse([]string{"gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "custom-compat-model"}, &apiKeySpec{}, nil)
+	response := buildCodexClientModelsResponse([]string{"gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "custom-compat-model"}, &apiKeySpec{}, nil, nil)
 	models, ok := response["models"].([]map[string]any)
 	if !ok {
 		t.Fatalf("models response should contain a models array: %#v", response["models"])
@@ -342,9 +479,9 @@ func TestCodexClientModelsResponsePreserves56Template(t *testing.T) {
 	if intFromAny(sol["context_window"]) != 272000 || intFromAny(sol["max_context_window"]) != 921000 {
 		t.Fatalf("sol context windows = %#v / %#v", sol["context_window"], sol["max_context_window"])
 	}
-	// 官方为 gpt-5.6-sol 同时声明 Fast 与 Ultrafast 两个档位。
+	// Advertise Fast only; do not inject an unverified Ultrafast tier.
 	tiers, ok := sol["service_tiers"].([]any)
-	if !ok || len(tiers) != 2 {
+	if !ok || len(tiers) != 1 {
 		t.Fatalf("sol service_tiers = %#v", sol["service_tiers"])
 	}
 	tierIDs := make([]string, 0, len(tiers))
@@ -352,8 +489,8 @@ func TestCodexClientModelsResponsePreserves56Template(t *testing.T) {
 		tier, _ := raw.(map[string]any)
 		tierIDs = append(tierIDs, strings.TrimSpace(fmt.Sprint(tier["id"])))
 	}
-	if got := strings.Join(tierIDs, ","); got != "priority,ultrafast" {
-		t.Fatalf("sol service tier ids = %q, want priority,ultrafast", got)
+	if got := strings.Join(tierIDs, ","); got != "priority" {
+		t.Fatalf("sol service tier ids = %q, want priority", got)
 	}
 	if got, ok := sol["supports_search_tool"].(bool); !ok || !got {
 		t.Fatalf("sol supports_search_tool = %#v, want true", sol["supports_search_tool"])
@@ -388,41 +525,95 @@ func TestCodexClientModelsResponsePreserves56Template(t *testing.T) {
 	}
 }
 
-func TestCodexClientModelsResponsePreservesAstraTemplate(t *testing.T) {
-	response := buildCodexClientModelsResponse([]string{"gpt-6-astra"}, &apiKeySpec{}, nil)
+func TestCodexClientModelsResponsePreservesGpt6Templates(t *testing.T) {
+	response := buildCodexClientModelsResponse([]string{"gpt-6-astra", "gpt-6-sol", "gpt-6-luna"}, &apiKeySpec{}, nil, nil)
 	models, ok := response["models"].([]map[string]any)
-	if !ok || len(models) != 1 {
-		t.Fatalf("Astra models response = %#v, want one model", response["models"])
+	if !ok || len(models) != 3 {
+		t.Fatalf("GPT-6 models response = %#v, want three models", response["models"])
 	}
-	astra := models[0]
-	if got := stringFromAny(astra["display_name"]); got != "6 Astra" {
-		t.Fatalf("Astra display_name = %q", got)
-	}
-	if got := intFromAny(astra["context_window"]); got != 1050000 {
-		t.Fatalf("Astra context_window = %d, want 1050000", got)
-	}
-	if got := intFromAny(astra["max_context_window"]); got != 1050000 {
-		t.Fatalf("Astra max_context_window = %d, want 1050000", got)
-	}
-	levels, ok := astra["supported_reasoning_levels"].([]any)
-	if !ok {
-		t.Fatalf("Astra reasoning levels = %#v", astra["supported_reasoning_levels"])
-	}
-	for _, effort := range []string{"low", "medium", "high", "xhigh", "max", "ultra"} {
-		found := false
-		for _, raw := range levels {
-			level, _ := raw.(map[string]any)
-			if stringFromAny(level["effort"]) == effort {
-				found = true
-				break
+	for _, tc := range []struct {
+		slug    string
+		name    string
+		efforts []string
+	}{
+		{slug: "gpt-6-astra", name: "GPT-6 Astra", efforts: []string{"low", "medium", "high", "xhigh", "max", "ultra"}},
+		{slug: "gpt-6-sol", name: "GPT-6 Sol", efforts: []string{"low", "medium", "high", "xhigh", "max", "ultra"}},
+		{slug: "gpt-6-luna", name: "GPT-6 Luna", efforts: []string{"low", "medium", "high", "xhigh", "max"}},
+	} {
+		model := findCodexClientModelForTest(models, tc.slug)
+		if model == nil {
+			t.Fatalf("模型 %s 缺失，实际: %v", tc.slug, modelSlugs(models))
+		}
+		// 与官方客户端一致：展示名统一为 `GPT-6 <Family>`。
+		if got := stringFromAny(model["display_name"]); got != tc.name {
+			t.Fatalf("%s display_name = %q, want %q", tc.slug, got, tc.name)
+		}
+		if got := intFromAny(model["context_window"]); got != 1050000 {
+			t.Fatalf("%s context_window = %d, want 1050000", tc.slug, got)
+		}
+		if got := intFromAny(model["max_context_window"]); got != 1050000 {
+			t.Fatalf("%s max_context_window = %d, want 1050000", tc.slug, got)
+		}
+		levels, levelsOK := model["supported_reasoning_levels"].([]any)
+		if !levelsOK {
+			t.Fatalf("%s reasoning levels = %#v", tc.slug, model["supported_reasoning_levels"])
+		}
+		if len(levels) != len(tc.efforts) {
+			t.Fatalf("%s reasoning level count = %d, want %d: %#v", tc.slug, len(levels), len(tc.efforts), levels)
+		}
+		for _, effort := range tc.efforts {
+			found := false
+			for _, raw := range levels {
+				level, _ := raw.(map[string]any)
+				if stringFromAny(level["effort"]) == effort {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Fatalf("%s reasoning levels missing %q: %#v", tc.slug, effort, levels)
 			}
 		}
-		if !found {
-			t.Fatalf("Astra reasoning levels missing %q: %#v", effort, levels)
+		if got := stringFromAny(model["tool_mode"]); got != "code_mode_only" {
+			t.Fatalf("%s tool_mode = %q", tc.slug, got)
 		}
 	}
-	if got := stringFromAny(astra["tool_mode"]); got != "code_mode_only" {
-		t.Fatalf("Astra tool_mode = %q", got)
+}
+
+// Ollama 兼容层按家族暴露上下文长度与推理档位，Luna 家族没有 ultra 档位。
+func TestOllamaBridgeExposesGpt6Capabilities(t *testing.T) {
+	for _, tc := range []struct {
+		slug    string
+		efforts []string
+	}{
+		{slug: "gpt-6-astra", efforts: []string{"low", "medium", "high", "xhigh", "max", "ultra"}},
+		{slug: "gpt-6-sol", efforts: []string{"low", "medium", "high", "xhigh", "max", "ultra"}},
+		{slug: "gpt-6-luna", efforts: []string{"low", "medium", "high", "xhigh", "max"}},
+	} {
+		if got := ollamaContextLength(tc.slug); got != 1050000 {
+			t.Fatalf("ollamaContextLength(%q) = %d, want 1050000", tc.slug, got)
+		}
+		if got := ollamaModelFamily(tc.slug); got != tc.slug {
+			t.Fatalf("ollamaModelFamily(%q) = %q, want %q", tc.slug, got, tc.slug)
+		}
+		if got := ollamaReasoningEfforts(tc.slug); !reflect.DeepEqual(got, tc.efforts) {
+			t.Fatalf("ollamaReasoningEfforts(%q) = %#v, want %#v", tc.slug, got, tc.efforts)
+		}
+		if got := ollamaDefaultReasoningEffort(tc.slug); got != "medium" {
+			t.Fatalf("ollamaDefaultReasoningEffort(%q) = %q, want medium", tc.slug, got)
+		}
+		if !isCodexShellModelID(tc.slug) {
+			t.Fatalf("%s 必须是 Codex 官方壳位模型", tc.slug)
+		}
+	}
+	if got := displayNameForModel("gpt-6-astra"); got != "GPT-6 Astra" {
+		t.Fatalf("displayNameForModel(gpt-6-astra) = %q, want GPT-6 Astra", got)
+	}
+	if got := displayNameForModel("gpt-6-sol"); got != "GPT-6 Sol" {
+		t.Fatalf("displayNameForModel(gpt-6-sol) = %q, want GPT-6 Sol", got)
+	}
+	if got := displayNameForModel("gpt-6-luna"); got != "GPT-6 Luna" {
+		t.Fatalf("displayNameForModel(gpt-6-luna) = %q, want GPT-6 Luna", got)
 	}
 }
 
@@ -434,6 +625,7 @@ func TestCodexClientModelsResponseAppliesExplicitContextWindows(t *testing.T) {
 			"gpt-5.6-sol":  900000,
 			"custom-flash": 1048576,
 		},
+		nil,
 	)
 	models, ok := response["models"].([]map[string]any)
 	if !ok {
@@ -497,7 +689,7 @@ func TestCodexClientModelsResponseDoesNotInjectFastMode(t *testing.T) {
 		{name: "provider gateway", spec: &apiKeySpec{ProviderGateway: &providerGatewaySpec{}}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			response := buildCodexClientModelsResponse([]string{"gpt-5.6-sol", "custom-compat-model"}, test.spec, nil)
+			response := buildCodexClientModelsResponse([]string{"gpt-5.6-sol", "custom-compat-model"}, test.spec, nil, nil)
 			models, ok := response["models"].([]map[string]any)
 			if !ok {
 				t.Fatalf("models response should contain a models array: %#v", response["models"])
@@ -528,7 +720,7 @@ func TestCodexClientModelsResponseDoesNotInjectFastMode(t *testing.T) {
 func TestCodexClientModelsResponseEnablesWebsocketsWhenConfigured(t *testing.T) {
 	response := buildCodexClientModelsResponse([]string{"gpt-5.6-sol"}, &apiKeySpec{
 		ResponsesWebsockets: true,
-	}, nil)
+	}, nil, nil)
 	models, ok := response["models"].([]map[string]any)
 	if !ok {
 		t.Fatalf("models response should contain a models array: %#v", response["models"])
@@ -786,7 +978,7 @@ func TestRelayServerCockpitQuotaUpstreamFailureReturnsScopedEmptyState(t *testin
 func TestCodexClientModelsResponseDisablesSearchForProviderGateway(t *testing.T) {
 	response := buildCodexClientModelsResponse([]string{"gpt-5.6-sol"}, &apiKeySpec{
 		ProviderGateway: &providerGatewaySpec{},
-	}, nil)
+	}, nil, nil)
 	models, ok := response["models"].([]map[string]any)
 	if !ok {
 		t.Fatalf("models response should contain a models array: %#v", response["models"])
@@ -854,7 +1046,7 @@ func TestCodexClientModelsResponseGatesProviderGatewayImageInput(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			response := buildCodexClientModelsResponse([]string{test.model}, &apiKeySpec{
 				ProviderGateway: test.gateway,
-			}, nil)
+			}, nil, nil)
 			models, ok := response["models"].([]map[string]any)
 			if !ok {
 				t.Fatalf("models response should contain a models array: %#v", response["models"])
@@ -920,7 +1112,7 @@ func stringFromAny(value any) string {
 }
 
 func TestCodexSparkUsesCompleteCodexClientCatalogTemplate(t *testing.T) {
-	response := buildCodexClientModelsResponse([]string{codexSparkCatalogTemplateModel, codexSparkModel}, &apiKeySpec{}, nil)
+	response := buildCodexClientModelsResponse([]string{codexSparkCatalogTemplateModel, codexSparkModel}, &apiKeySpec{}, nil, nil)
 	models, ok := response["models"].([]map[string]any)
 	if !ok {
 		t.Fatalf("models response should contain a models array: %#v", response["models"])
@@ -997,16 +1189,16 @@ func TestCodexReserveClientCatalogListsLunaReserveWithLunaCapabilities(t *testin
 		ModelIDs: []string{codexReserveModel},
 	}
 	models := clientCatalogModelsForAPIKey(m, &apiKeySpec{AccountIDs: []string{"reserve-account"}})
-	response := buildCodexClientModelsResponse(models, &apiKeySpec{}, nil)
+	response := buildCodexClientModelsResponse(models, &apiKeySpec{}, nil, nil)
 	data, ok := response["models"].([]map[string]any)
 	if !ok {
 		t.Fatalf("models response should contain a models array: %#v", response["models"])
 	}
 	reserve := findCodexClientModelForTest(data, codexReserveModel)
-	if reserve == nil || reserve["display_name"] != "Luna Reserve" || reserve["visibility"] != "list" {
+	if reserve == nil || reserve["display_name"] != "GPT-5.6 Reserve" || reserve["visibility"] != "list" {
 		t.Fatalf("gpt-reserve catalog entry = %#v", reserve)
 	}
-	lunaResponse := buildCodexClientModelsResponse([]string{"gpt-5.6-luna"}, &apiKeySpec{}, nil)
+	lunaResponse := buildCodexClientModelsResponse([]string{"gpt-5.6-luna"}, &apiKeySpec{}, nil, nil)
 	luna := findCodexClientModelForTest(lunaResponse["models"].([]map[string]any), "gpt-5.6-luna")
 	for _, field := range []string{"context_window", "max_context_window", "auto_compact_token_limit", "supported_reasoning_levels", "default_reasoning_level", "input_modalities", "tool_mode", "shell_type", "use_responses_lite", "priority"} {
 		if !reflect.DeepEqual(reserve[field], luna[field]) {
@@ -1023,7 +1215,15 @@ func TestCodexReserveClientCatalogListsLunaReserveWithLunaCapabilities(t *testin
 }
 
 func TestImageRequestModelIsNotRewrittenToProviderUpstreamModel(t *testing.T) {
-	m := &manifest{ModelIDs: []string{"gpt-5.5", "deepseek-flash"}}
+	// gpt-5.5 是 DeepSeek 网关的目录壳位，必须由别名声明；未声明的 Codex/GPT 官方 id
+	// 不再兜底改写成 provider 上游模型。
+	m := &manifest{
+		ModelIDs:     []string{"gpt-5.5", "deepseek-flash"},
+		ModelAliases: []modelAliasSpec{{SourceModel: "deepseek-flash", Alias: "gpt-5.5"}},
+		aliasToSource: map[string]string{
+			"gpt-5.5": "deepseek-flash",
+		},
+	}
 	spec := &apiKeySpec{
 		ProviderGateway: &providerGatewaySpec{
 			UpstreamModel:  "deepseek-flash",
@@ -1077,9 +1277,9 @@ func TestReserveModelAdmissionKeepsIDAndStillHonorsExplicitAccessFilters(t *test
 
 func TestPrefixedCodexReserveKeepsVisibleLunaCapabilitiesAndExplicitContext(t *testing.T) {
 	spec := &apiKeySpec{ModelPrefix: "team"}
-	response := buildCodexClientModelsResponse([]string{"team/gpt-reserve"}, spec, map[string]int64{"gpt-reserve": 516000})
+	response := buildCodexClientModelsResponse([]string{"team/gpt-reserve"}, spec, map[string]int64{"gpt-reserve": 516000}, nil)
 	reserve := findCodexClientModelForTest(response["models"].([]map[string]any), "team/gpt-reserve")
-	if reserve == nil || reserve["visibility"] != "list" || reserve["display_name"] != "Luna Reserve" {
+	if reserve == nil || reserve["visibility"] != "list" || reserve["display_name"] != "GPT-5.6 Reserve" {
 		t.Fatalf("prefixed Reserve = %#v", reserve)
 	}
 	if intFromAny(reserve["context_window"]) != 516000 || reserve["auto_compact_token_limit"] != nil {
@@ -1146,6 +1346,94 @@ func TestCockpitSelectorRestrictsAuthsToClientAPIKeyAccountScope(t *testing.T) {
 	}
 	if selected.ID != "account-scoped.json" {
 		t.Fatalf("expected only scoped account to be selected, got %q", selected.ID)
+	}
+}
+
+func TestAuthMatchesTargetAccountByManifestBusinessID(t *testing.T) {
+	auth := &coreauth.Auth{ID: "oauth-account.json", Provider: "codex"}
+	account := &accountSpec{ID: "business-account-id", AuthID: auth.ID}
+
+	if !authMatchesTargetAccount(auth, "business-account-id", account) {
+		t.Fatal("target account should match the manifest business account ID")
+	}
+	if !authMatchesTargetAccount(auth, "oauth-account.json", account) {
+		t.Fatal("target account should retain auth ID compatibility")
+	}
+	if authMatchesTargetAccount(auth, "different-account", account) {
+		t.Fatal("unrelated target account must not match")
+	}
+}
+
+func TestAuthMatchesTargetAccountByAPIKeyAttribute(t *testing.T) {
+	auth := &coreauth.Auth{
+		ID:         "codex:apikey:hash",
+		Provider:   "codex",
+		Attributes: map[string]string{"account_id": "api-key-business-id"},
+	}
+
+	if !authMatchesTargetAccount(auth, "api-key-business-id", nil) {
+		t.Fatal("API Key auth should match the business account attribute")
+	}
+}
+
+func TestTargetAccountHeaderRequiresInternalAPIKey(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	internal := &apiKeySpec{ID: "internal", Key: "internal-key", Internal: true, Enabled: true}
+	external := &apiKeySpec{ID: "client", Key: "client-key", Enabled: true}
+	policy := &requestPolicy{
+		manifest: &manifest{
+			ModelIDs: []string{"gpt-5.5"},
+			APIKeys:  []apiKeySpec{*internal, *external},
+			apiKeyByValue: map[string]*apiKeySpec{
+				internal.Key: internal,
+				external.Key: external,
+			},
+		},
+		tracker: newRequestUsageTracker(),
+	}
+	router := gin.New()
+	router.Use(policy.middleware())
+	seenTarget := map[string]string{}
+	router.POST("/v1/responses", func(c *gin.Context) {
+		target, _ := c.Request.Context().Value(targetAccountIDContextKey).(string)
+		seenTarget[c.GetString(ginUserAPIKeyKey)] = target
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+	})
+
+	for _, key := range []string{internal.Key, external.Key} {
+		request := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-5.5"}`))
+		request.Header.Set("Authorization", "Bearer "+key)
+		request.Header.Set("Content-Type", "application/json")
+		request.Header.Set(targetAccountIDHeaderName, "target-account")
+		recorder := httptest.NewRecorder()
+		router.ServeHTTP(recorder, request)
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("request with %s returned %d: %s", key, recorder.Code, recorder.Body.String())
+		}
+	}
+
+	if got := seenTarget[internal.Key]; got != "target-account" {
+		t.Fatalf("internal API key target account = %q, want %q", got, "target-account")
+	}
+	if got := seenTarget[external.Key]; got != "" {
+		t.Fatalf("external API key must not pin a target account, got %q", got)
+	}
+}
+
+func TestInternalAPIKeyBypassesExcludedModels(t *testing.T) {
+	manifest := &manifest{
+		ModelIDs:       []string{"gpt-5.5"},
+		ExcludedModels: []string{"gpt-5.4"},
+	}
+	internal := &apiKeySpec{ID: "internal", Key: "internal-key", Internal: true, Enabled: true}
+	external := &apiKeySpec{ID: "client", Key: "client-key", Enabled: true}
+	body := []byte(`{"model":"gpt-5.4"}`)
+
+	if _, model, err := rewriteBodyModel(manifest, internal, "text", body); err != nil {
+		t.Fatalf("internal key should keep host-selected models available, got %v (model=%s)", err, model)
+	}
+	if _, _, err := rewriteBodyModel(manifest, external, "text", body); err == nil {
+		t.Fatal("excluded model must stay unavailable for external API keys")
 	}
 }
 
@@ -2346,31 +2634,36 @@ func TestManifestRegistryModelsPreservesStaticThinkingSupport(t *testing.T) {
 	}
 }
 
-func TestManifestRegistryModelsPreservesAstraThinkingSupport(t *testing.T) {
-	models := manifestRegistryModels(&manifest{
-		ModelIDs: []string{"gpt-6-astra"},
-	})
-	info := findModelInfoForTest(models, "gpt-6-astra")
-	if info == nil {
-		t.Fatal("expected gpt-6-astra in manifest registry models")
-	}
-	if info.Thinking == nil {
-		t.Fatalf("Astra thinking support is missing: %#v", info)
-	}
-	for _, effort := range []string{"low", "medium", "high", "xhigh", "max", "ultra"} {
-		found := false
-		for _, level := range info.Thinking.Levels {
-			if level == effort {
-				found = true
-				break
+func TestManifestRegistryModelsPreservesGpt6ThinkingSupport(t *testing.T) {
+	for _, tc := range []struct {
+		slug    string
+		efforts []string
+	}{
+		{slug: "gpt-6-astra", efforts: []string{"low", "medium", "high", "xhigh", "max", "ultra"}},
+		{slug: "gpt-6-sol", efforts: []string{"low", "medium", "high", "xhigh", "max", "ultra"}},
+		{slug: "gpt-6-luna", efforts: []string{"low", "medium", "high", "xhigh", "max"}},
+	} {
+		models := manifestRegistryModels(&manifest{
+			ModelIDs: []string{tc.slug},
+		})
+		info := findModelInfoForTest(models, tc.slug)
+		if info == nil {
+			t.Fatalf("expected %s in manifest registry models", tc.slug)
+		}
+		if info.Thinking == nil {
+			t.Fatalf("%s thinking support is missing: %#v", tc.slug, info)
+		}
+		if len(info.Thinking.Levels) != len(tc.efforts) {
+			t.Fatalf("%s thinking level count = %d, want %d: %#v", tc.slug, len(info.Thinking.Levels), len(tc.efforts), info.Thinking.Levels)
+		}
+		for _, effort := range tc.efforts {
+			if !stringSliceContains(info.Thinking.Levels, effort) {
+				t.Fatalf("%s thinking levels missing %q: %#v", tc.slug, effort, info.Thinking.Levels)
 			}
 		}
-		if !found {
-			t.Fatalf("Astra thinking levels missing %q: %#v", effort, info.Thinking.Levels)
+		if info.UserDefined {
+			t.Fatalf("%s should use shipped static capabilities: %#v", tc.slug, info)
 		}
-	}
-	if info.UserDefined {
-		t.Fatalf("Astra should use shipped static capabilities: %#v", info)
 	}
 }
 
@@ -2955,6 +3248,40 @@ func TestUsagePluginForwardsReasoningEffortInUsagePayload(t *testing.T) {
 	}
 }
 
+func TestUsagePluginKeepsRequestedAndUpstreamModelPair(t *testing.T) {
+	tracker := newRequestUsageTracker()
+	plugin := &usagePlugin{tracker: tracker}
+	ctx := internallogging.WithRequestID(context.Background(), "req-model-pair")
+	ctx = internallogging.WithEndpoint(ctx, "POST /v1/responses")
+	// 路由改写前宿主上下文里保存的是客户端请求模型（含命名空间前缀）。
+	ctx = context.WithValue(ctx, requestModelContextKey, "cpa/gpt-5.5")
+
+	plugin.HandleUsage(ctx, coreusage.Record{
+		Provider:    "openai-compatibility",
+		Model:       "glm-5.3",
+		RequestedAt: time.UnixMilli(123),
+		Latency:     50 * time.Millisecond,
+	})
+
+	payload, ok := tracker.finalize("req-model-pair", usageFinalizeInput{
+		status:        http.StatusOK,
+		latencyMS:     50,
+		completedAtMS: 123,
+	})
+	if !ok {
+		t.Fatal("expected usage payload")
+	}
+	if payload.RequestedModel != "cpa/gpt-5.5" {
+		t.Fatalf("requested model = %q, want cpa/gpt-5.5", payload.RequestedModel)
+	}
+	if payload.UpstreamModel != "glm-5.3" {
+		t.Fatalf("upstream model = %q, want glm-5.3", payload.UpstreamModel)
+	}
+	if payload.Model != "glm-5.3" {
+		t.Fatalf("legacy model field = %q, want glm-5.3", payload.Model)
+	}
+}
+
 func TestErrorCategoryClassifiesClientCanceled(t *testing.T) {
 	if got := errorCategory(0, "context canceled", false); got != "client_canceled" {
 		t.Fatalf("expected client_canceled, got %q", got)
@@ -3112,7 +3439,7 @@ func TestMixedRoutingCatalogPreservesGPTCapabilities(t *testing.T) {
 		UpstreamModels: []string{"gpt-6-astra"},
 		WireAPI:        "responses",
 	})
-	catalog := buildCodexClientModelsResponse([]string{"gpt-6-astra", "cpa/gpt-6-astra"}, spec, nil)
+	catalog := buildCodexClientModelsResponse([]string{"gpt-6-astra", "cpa/gpt-6-astra"}, spec, nil, nil)
 	models := catalog["models"].([]map[string]any)
 	if models[1]["slug"] != "cpa/gpt-6-astra" {
 		t.Fatal("lost routing identity")

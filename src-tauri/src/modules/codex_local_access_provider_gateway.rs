@@ -565,7 +565,8 @@ fn provider_gateway_models_for_account(account: &CodexAccount) -> Vec<String> {
         .unwrap_or_default()
         .trim()
         .to_ascii_lowercase();
-    if provider_id == "deepseek" || base_url.contains("api.deepseek.com") {
+    // 官方 DeepSeek 兜底模型只按地址判定：供应商预设是「身份」，第三方中转地址不算官方。
+    if codex_account::is_deepseek_account(account) {
         return normalize_provider_gateway_models(vec![
             "deepseek-flash",
             "deepseek-v4-pro",
@@ -630,6 +631,13 @@ fn is_provider_model_shell_slug(model: &str) -> bool {
             .any(|shell| shell.eq_ignore_ascii_case(model))
 }
 
+/// 是否属于 Codex/GPT 官方模型壳位（含仅身份保留的 id）。
+///
+/// 这类名字代表客户端会按内置 GPT 元数据生成请求，不能映射到非 GPT 上游。
+pub(crate) fn is_codex_provider_shell_model_id(model: &str) -> bool {
+    is_provider_model_shell_slug(model)
+}
+
 const DEEPSEEK_OFFICIAL_SHELL_SLOTS: &[(&str, &str)] = &[
     ("deepseek-flash", "gpt-5.5"),
     // 旧模型名保留同一套壳位，已存在的账号不需要迁移。
@@ -637,6 +645,18 @@ const DEEPSEEK_OFFICIAL_SHELL_SLOTS: &[(&str, &str)] = &[
     ("deepseek-v4-pro", "gpt-5.4"),
     ("deepseek-v4-flash-vision-exp", "gpt-5.4-mini"),
 ];
+
+/// DeepSeek 目录壳位映射（客户端可见名 → 上游模型）。
+///
+/// 同一个壳位只保留表内第一个上游模型，与 `allocate_official_deepseek_shell_slots` 一致。
+pub(crate) fn deepseek_official_shell_client_mappings() -> Vec<(String, String)> {
+    let mut used_shells = HashSet::new();
+    DEEPSEEK_OFFICIAL_SHELL_SLOTS
+        .iter()
+        .filter(|(_, shell)| used_shells.insert(shell.to_ascii_lowercase()))
+        .map(|(upstream, shell)| ((*shell).to_string(), (*upstream).to_string()))
+        .collect()
+}
 
 fn allocate_official_deepseek_shell_slots(
     models: &[String],
@@ -735,6 +755,23 @@ pub(crate) fn allocate_provider_model_slots(models: &[String]) -> Vec<ProviderGa
 
 fn provider_gateway_model_slots(models: &[String]) -> Vec<ProviderGatewayModelSlot> {
     allocate_provider_model_slots(models)
+}
+
+/// 账号的客户端可见模型槽位：直连上游 / CDP 注入用上游真实 ID，其余按官方壳位分配。
+pub(crate) fn provider_model_slots_for_account(
+    account: &CodexAccount,
+    models: &[String],
+) -> Vec<ProviderGatewayModelSlot> {
+    if !codex_account::account_uses_raw_provider_model_ids(account) {
+        return allocate_provider_model_slots(models);
+    }
+    normalize_provider_gateway_models(models.iter().map(String::as_str).collect())
+        .into_iter()
+        .map(|model| ProviderGatewayModelSlot {
+            client_model: model.clone(),
+            upstream_model: model,
+        })
+        .collect()
 }
 
 pub(crate) fn provider_model_slots_need_upstream_rewrite(
@@ -1114,17 +1151,127 @@ fn provider_gateway_wire_api_for_account(account: &CodexAccount) -> String {
     }
 }
 
+/// 官方 DeepSeek 账号判定与账号模块保持一致：只看地址（第三方中转不算官方）。
 fn is_official_deepseek_account(account: &CodexAccount) -> bool {
-    account
-        .api_provider_id
-        .as_deref()
-        .is_some_and(|value| value.eq_ignore_ascii_case("deepseek"))
-        || account
-            .api_base_url
-            .as_deref()
-            .and_then(|value| Url::parse(value.trim()).ok())
-            .and_then(|url| url.host_str().map(str::to_string))
-            .is_some_and(|host| host.eq_ignore_ascii_case("api.deepseek.com"))
+    codex_account::is_deepseek_account(account)
+}
+
+/// 供应商网关上游是否是 DeepSeek 官方。
+///
+/// 以 collection 里记录的上游地址为准：账号文件是加密存储的，网关配置是运行态直接可读的
+/// 权威来源，且对 Responses 与 Chat Completions 两种 DeepSeek 接入都成立。
+fn provider_gateway_points_at_official_deepseek(gateway: &CodexLocalAccessProviderGateway) -> bool {
+    Url::parse(gateway.base_url.trim())
+        .ok()
+        .and_then(|url| url.host_str().map(str::to_string))
+        .is_some_and(|host| host.eq_ignore_ascii_case("api.deepseek.com"))
+}
+
+/// 账号池里是否包含 DeepSeek 账号（含混合模型路由的渠道）。
+fn collection_pool_contains_official_deepseek_account(
+    collection: &CodexLocalAccessCollection,
+) -> bool {
+    let gateway_is_deepseek = |gateway: &Option<CodexLocalAccessProviderGateway>| {
+        gateway
+            .as_ref()
+            .is_some_and(provider_gateway_points_at_official_deepseek)
+    };
+    if collection
+        .api_keys
+        .iter()
+        .any(|api_key| gateway_is_deepseek(&api_key.provider_gateway))
+    {
+        return true;
+    }
+    if collection.api_keys.iter().any(|api_key| {
+        api_key.model_routing.as_ref().is_some_and(|routing| {
+            routing
+                .routes
+                .iter()
+                .any(|route| provider_gateway_points_at_official_deepseek(&route.provider_gateway))
+        })
+    }) {
+        return true;
+    }
+    collection.account_ids.iter().any(|account_id| {
+        codex_account::load_account(account_id.trim())
+            .is_some_and(|account| is_official_deepseek_account(&account))
+    })
+}
+
+/// 账号池里只要有 DeepSeek 账号，转发 profile 的压缩就必须回到本地流程。
+/// 账号池里有没有账号能承接官方 GPT / Codex 模型（判断依据与模型清单一致）。
+fn collection_pool_provides_gpt_models(collection: &CodexLocalAccessCollection) -> bool {
+    // 只按对话账号判断：仅用于生图转发的 OAuth 账号不承接对话模型。
+    let accounts: Vec<CodexAccount> = conversation_sidecar_account_ids(collection)
+        .into_iter()
+        .filter_map(|account_id| codex_account::load_account(&account_id))
+        .filter(|account| {
+            is_local_access_eligible_account(account, collection.restrict_free_accounts)
+        })
+        .collect();
+    pool_provides_gpt_models(&accounts)
+}
+
+/// 账号池里只要有 DeepSeek 账号、或完全没有能承接官方 GPT 模型的账号（例如只有 Grok），
+/// 转发 profile 的压缩就必须回到本地流程。
+///
+/// DeepSeek 没有服务端压缩：`/responses/compact` 返回 404，`compaction_trigger` 只会返回普通
+/// message；Codex 的远程压缩 v2 要求响应里恰好有一个 compaction 输出项，所以请求一旦被路由到
+/// DeepSeek 账号就必然失败，并且会先撞上
+/// `The reasoning_text in the thinking mode must be passed back to the API`。
+/// xAI（Grok）、第三方 Chat 协议账号同理没有可用的服务端压缩：一旦客户端走远程压缩，
+/// 压缩请求会带着切换前的旧模型 ID 发出去，压缩结果与当前选择无关。回到本地摘要流程后，
+/// 压缩由当前选择的模型完成。
+/// 这里只关闭该 profile 的远程压缩、并移除会切成「换窗口」模式的 `token_budget`，
+/// 让压缩留在本地摘要流程；不写其它 DeepSeek 专属覆盖，避免影响同一账号池里的官方账号。
+pub(crate) fn ensure_local_compaction_for_account_pool(
+    profile_dir: &Path,
+    collection: &CodexLocalAccessCollection,
+) -> Result<(), String> {
+    let contains_deepseek = collection_pool_contains_official_deepseek_account(collection);
+    let provides_gpt = collection_pool_provides_gpt_models(collection);
+    if !contains_deepseek && provides_gpt {
+        return Ok(());
+    }
+    let reason = if contains_deepseek {
+        "账号池含 DeepSeek 账号"
+    } else {
+        "账号池没有可承接官方 GPT 模型的账号"
+    };
+    if crate::modules::codex_account::ensure_local_compaction_fallback_for_dir(profile_dir)? {
+        logger::log_codex_api_info(&format!(
+            "[CodexLocalAccess][local-compaction] {}，已为该 profile 启用本地压缩: profile={}",
+            reason,
+            profile_dir.display()
+        ));
+    }
+    Ok(())
+}
+
+/// 实例网关接管 profile 后补回 DeepSeek 压缩兜底。
+///
+/// 接管流程会把 profile 当成「非 DeepSeek 账号」清掉切号时写入的兜底，但 profile 的上游仍是
+/// DeepSeek：本地网关出口已经把第三方推理正文改写成官方形状，远程压缩会把整段历史交给上游
+/// 校验，上游会以 `The reasoning_text in the thinking mode must be passed back to the API`
+/// 拒绝压缩。只有上游确实是 DeepSeek 官方账号时才补写，其它供应商不受影响。
+///
+/// 补写只关远端压缩并移除 `token_budget`：后者会把压缩换成不产摘要的「窗口重置」，
+/// 让任务在压缩后丢失。
+fn reapply_deepseek_profile_compaction_fallback(
+    profile_dir: &Path,
+    account: &CodexAccount,
+) -> Result<(), String> {
+    if !is_official_deepseek_account(account) {
+        return Ok(());
+    }
+    if crate::modules::codex_account::reapply_deepseek_config_overrides_for_dir(profile_dir)? {
+        logger::log_codex_api_info(&format!(
+            "[CodexLocalAccess][provider-gateway] 已写回 DeepSeek 压缩兜底: profile={}",
+            profile_dir.display()
+        ));
+    }
+    Ok(())
 }
 
 fn account_uses_synced_model_shell_gateway(account: &CodexAccount) -> bool {
@@ -1137,16 +1284,9 @@ fn account_uses_synced_model_shell_gateway(account: &CodexAccount) -> bool {
     if !account.api_sync_model_catalog_to_codex {
         return false;
     }
-    if is_official_deepseek_account(account)
-        && provider_gateway_wire_api_for_account(account) == "responses"
-        && account
-            .api_instance_access_mode
-            .as_deref()
-            .map(str::trim)
-            .is_some_and(|mode| {
-                mode.eq_ignore_ascii_case("direct") || mode.eq_ignore_ascii_case("cdp")
-            })
-    {
+    // 直连上游 / CDP 注入：模型清单按上游真实 ID 呈现，不做客户端壳位改写
+    // （官方 DeepSeek 与第三方供应商同一语义）。
+    if codex_account::account_uses_raw_provider_model_ids(account) {
         return false;
     }
     // Responses path normally talks to upstream directly. When the synced catalog needs
@@ -1169,10 +1309,19 @@ fn is_chat_completions_api_key_account(account: &CodexAccount) -> bool {
 }
 
 pub fn account_requires_provider_gateway(account: &CodexAccount) -> bool {
+    if codex_account::is_grok_upstream_provider(account) {
+        return true;
+    }
     if is_chat_completions_api_key_account(account) {
         return true;
     }
-    account_uses_synced_model_shell_gateway(account)
+    if account_uses_synced_model_shell_gateway(account) {
+        return true;
+    }
+    // 生图转发需要本地网关拦截 gpt-image 请求；账号选了生图账号池时强制启用网关。
+    account.is_api_key_auth()
+        && !account.api_image_generation_account_ids.is_empty()
+        && !codex_account::account_uses_raw_provider_model_ids(account)
 }
 
 /// 绑定 OAuth 的 API Key 不再走本地网关生图兼容（与「改前」一致）。
@@ -1195,7 +1344,15 @@ pub fn is_local_access_runtime_account_id(account_id: &str) -> bool {
 }
 
 fn is_provider_gateway_eligible_account(account: &CodexAccount) -> bool {
-    account_requires_provider_gateway(account)
+    if codex_account::is_grok_upstream_provider(account) {
+        // Grok 供应商账号没有上游 API Key：凭据由绑定的 Grok 平台账号在 sidecar 里提供。
+        return true;
+    }
+    account.is_api_key_auth()
+        && account
+            .openai_api_key
+            .as_deref()
+            .is_some_and(|key| !key.trim().is_empty())
 }
 
 fn collection_uses_provider_gateway_account(
@@ -1217,9 +1374,200 @@ fn collection_uses_provider_gateway_account(
     })
 }
 
+/// 该供应商账号在 sidecar 中应使用的原生 provider（无 Provider Gateway 直连）。
+///
+/// Grok 供应商账号的凭据由 sidecar 的 xai auth 文件提供，因此必须走原生 provider
+/// 路由；其它账号仍然直连上游 Base URL，返回 None。
+fn native_provider_for_provider_account(account: &CodexAccount) -> Option<String> {
+    if codex_account::is_grok_upstream_provider(account) {
+        return Some("xai".to_string());
+    }
+    None
+}
+
+/// 供应商记录里的识图能力（`codex_model_providers.json`）。
+///
+/// v1.3.49 之前识图开关挂在供应商上，之后收敛为逐模型能力；升级后的账号记录
+/// 可能还没有同步到逐模型表，网关配置因此把支持图片的模型当成 text-only 并丢图。
+/// 这里以供应商记录作为兜底数据源，避免 Provider Gateway 静默删除 `input_image`。
+#[derive(Debug, Clone, Default)]
+struct CodexModelProviderVisionRecord {
+    supports_vision: bool,
+    /// key 为小写模型 ID。
+    model_capabilities: HashMap<String, bool>,
+}
+
+struct CodexModelProviderVisionEntry {
+    id: String,
+    /// 规范化后的 Base URL（去掉末尾斜杠并转小写）。
+    base_url: Option<String>,
+    record: CodexModelProviderVisionRecord,
+}
+
+const CODEX_MODEL_PROVIDERS_FILE: &str = "codex_model_providers.json";
+
+fn normalize_provider_vision_base_url(value: &str) -> Option<String> {
+    let trimmed = value.trim().trim_end_matches('/').to_ascii_lowercase();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed)
+    }
+}
+
+fn load_codex_model_provider_vision_entries() -> Vec<CodexModelProviderVisionEntry> {
+    let Ok(path) = account::get_data_dir().map(|dir| dir.join(CODEX_MODEL_PROVIDERS_FILE)) else {
+        return Vec::new();
+    };
+    let Ok(content) = fs::read_to_string(&path) else {
+        return Vec::new();
+    };
+    let Ok(value) = serde_json::from_str::<Value>(&content) else {
+        return Vec::new();
+    };
+    let Some(items) = value.as_array() else {
+        return Vec::new();
+    };
+    items
+        .iter()
+        .filter_map(|item| {
+            let id = item
+                .get("id")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .unwrap_or_default()
+                .to_string();
+            let base_url = item
+                .get("baseUrl")
+                .and_then(Value::as_str)
+                .and_then(normalize_provider_vision_base_url);
+            if id.is_empty() && base_url.is_none() {
+                return None;
+            }
+            let supports_vision = item
+                .get("supportsVision")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            let mut model_capabilities = HashMap::new();
+            if let Some(map) = item.get("modelCapabilities").and_then(Value::as_object) {
+                for (model, capability) in map {
+                    let key = model.trim().to_ascii_lowercase();
+                    if key.is_empty() {
+                        continue;
+                    }
+                    if let Some(flag) = capability.get("supportsVision").and_then(Value::as_bool) {
+                        model_capabilities.insert(key, flag);
+                    }
+                }
+            }
+            Some(CodexModelProviderVisionEntry {
+                id,
+                base_url,
+                record: CodexModelProviderVisionRecord {
+                    supports_vision,
+                    model_capabilities,
+                },
+            })
+        })
+        .collect()
+}
+
+fn codex_model_provider_vision_record_for_account<'a>(
+    account: &CodexAccount,
+    entries: &'a [CodexModelProviderVisionEntry],
+) -> Option<&'a CodexModelProviderVisionRecord> {
+    let provider_id = account
+        .api_provider_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let account_base_url = account
+        .api_base_url
+        .as_deref()
+        .and_then(normalize_provider_vision_base_url);
+    entries
+        .iter()
+        .find(|entry| {
+            let id_matches = provider_id.is_some_and(|value| value == entry.id);
+            let base_url_matches = account_base_url
+                .as_deref()
+                .zip(entry.base_url.as_deref())
+                .is_some_and(|(account_url, provider_url)| account_url == provider_url);
+            id_matches || base_url_matches
+        })
+        .map(|entry| &entry.record)
+}
+
+/// 用供应商记录的识图能力补齐逐模型表。
+///
+/// 优先级：供应商逐模型显式值 → 账号逐模型显式值 → 供应商级开关 → 账号级开关。
+/// 返回网关级 `supportsVision`（作为未被逐模型表覆盖时的兜底）。
+fn merge_provider_vision_capabilities(
+    model_capabilities: &mut HashMap<String, CodexLocalAccessProviderGatewayModelCapability>,
+    account: &CodexAccount,
+    provider: Option<&CodexModelProviderVisionRecord>,
+    models: &[String],
+) -> bool {
+    let provider_flag = provider.is_some_and(|record| record.supports_vision);
+    let gateway_supports_vision = provider_flag || account.api_supports_vision;
+    for model in models {
+        let key = model.trim().to_ascii_lowercase();
+        if key.is_empty() {
+            continue;
+        }
+        let provider_value = provider.and_then(|record| record.model_capabilities.get(&key).copied());
+        let account_value = model_capabilities.get(&key).map(|capability| capability.supports_vision);
+        let effective = provider_value
+            .or(account_value)
+            .unwrap_or_else(|| {
+                gateway_supports_vision || codex_account::model_defaults_to_vision_input(model)
+            });
+        model_capabilities.insert(
+            key,
+            CodexLocalAccessProviderGatewayModelCapability {
+                supports_vision: effective,
+            },
+        );
+    }
+    gateway_supports_vision
+}
+
 fn provider_gateway_for_account(
     account: &CodexAccount,
 ) -> Result<CodexLocalAccessProviderGateway, String> {
+    if codex_account::is_grok_upstream_provider(account) {
+        // Grok 供应商账号走实例内的 xai 原生账号：这里只提供基址与模型目录，
+        // 真正的上游凭据由 sidecar 的 xai auth 文件（绑定的 Grok 平台账号）提供。
+        let upstream_models = provider_gateway_models_for_account(account);
+        if upstream_models.is_empty() {
+            return Err("Grok 账号还没有可用模型，请先在「模型与能力」中添加".to_string());
+        }
+        let model_capabilities = upstream_models
+            .iter()
+            .map(|model| {
+                (
+                    model.trim().to_lowercase(),
+                    CodexLocalAccessProviderGatewayModelCapability {
+                        supports_vision: account
+                            .api_model_vision_support
+                            .get(model)
+                            .copied()
+                            .unwrap_or(account.api_supports_vision),
+                    },
+                )
+            })
+            .collect::<std::collections::HashMap<_, _>>();
+        return Ok(CodexLocalAccessProviderGateway {
+            base_url: codex_account::GROK_CLI_CHAT_PROXY_BASE_URL.to_string(),
+            api_key: String::new(),
+            upstream_model: upstream_models.first().cloned().unwrap_or_default(),
+            upstream_models,
+            wire_api: Some("responses".to_string()),
+            supports_vision: account.api_supports_vision,
+            model_capabilities,
+            vision_routing_model: None,
+        });
+    }
     let api_key = account
         .openai_api_key
         .as_deref()
@@ -1268,6 +1616,17 @@ fn provider_gateway_for_account(
             }
         }
     }
+    // 供应商记录兜底：旧版本的供应商级/逐模型识图配置可能还没同步进账号记录，
+    // 直接按供应商数据补齐逐模型表，避免 sidecar 判定 text-only 后删除图片。
+    let provider_vision_entries = load_codex_model_provider_vision_entries();
+    let provider_vision =
+        codex_model_provider_vision_record_for_account(account, &provider_vision_entries);
+    let gateway_supports_vision = merge_provider_vision_capabilities(
+        &mut model_capabilities,
+        account,
+        provider_vision,
+        &upstream_models,
+    );
     // Provider catalogs expose shell aliases to Codex while requests are
     // rewritten to the upstream model. Keep the capability on both names so
     // the /models response and request guard agree for mapped DeepSeek models.
@@ -1281,14 +1640,13 @@ fn provider_gateway_for_account(
                 .or_insert(capability);
         }
     }
-
     Ok(CodexLocalAccessProviderGateway {
         base_url: base_url.to_string(),
         api_key: api_key.to_string(),
         upstream_model: upstream_models.first().cloned().unwrap_or_default(),
         upstream_models,
         wire_api: Some(provider_gateway_wire_api_for_account(account)),
-        supports_vision: account.api_supports_vision,
+        supports_vision: gateway_supports_vision,
         model_capabilities,
         vision_routing_model: account
             .api_vision_routing_model
@@ -1521,6 +1879,7 @@ fn build_mixed_model_gateway_collection_for_profile(
             namespace: route.namespace.clone(),
             provider_account_id: route.provider_account_id.clone(),
             provider_gateway,
+            native_provider: native_provider_for_provider_account(&provider_account),
         });
     }
 
@@ -1621,11 +1980,18 @@ fn build_provider_gateway_collection_for_profile(
     let key = provider_gateway_profile_api_key(profile_dir, &account.id)?;
     let now = now_ms();
     collection.api_key = key.clone();
+    // Grok 供应商账号的凭据来自绑定的 Grok 平台账号：sidecar 里作为 xai 原生账号
+    // 参与调度，因此这里不写 Provider Gateway（那是直连上游 Base URL 的路径）。
+    let uses_grok_upstream = codex_account::is_grok_upstream_provider(account);
     collection.api_keys.push(CodexLocalAccessApiKey {
         id: provider_gateway_api_key_id(&account.id),
         label: format!("Provider Gateway: {}", account.email),
         key: key.clone(),
-        provider_gateway: Some(provider_gateway.clone()),
+        provider_gateway: if uses_grok_upstream {
+            None
+        } else {
+            Some(provider_gateway.clone())
+        },
         model_routing: None,
         inherit_account_pool: Some(false),
         account_ids: vec![account.id.clone()],
@@ -2307,6 +2673,7 @@ fn write_provider_gateway_model_catalog_with_templates(
     } else {
         decorate_catalog_context_windows(&raw, slots, &HashMap::new(), default_window)?
     };
+    let content = codex_account::decorate_managed_model_catalog_for_profile(profile_dir, &content)?;
     write_string_atomic(
         &profile_dir.join(CODEX_PROVIDER_MODEL_CATALOG_FILE),
         &content,
@@ -2531,7 +2898,7 @@ pub async fn activate_provider_gateway_for_dir(
         build_provider_gateway_collection_for_profile(profile_dir, &account)?;
     let model_slots = provider_gateway_model_slots(&provider_gateway.upstream_models);
     save_profile_takeover_backup(profile_dir, &key)?;
-    write_local_access_profile_takeover(profile_dir, &collection, Some(&key)).await?;
+    write_local_access_profile_takeover(profile_dir, &collection, Some(&key), false).await?;
     cleanup_provider_gateway_profile_model_overrides(profile_dir)?;
     backup_current_profile_model_before_provider_gateway(
         profile_dir,
@@ -2552,6 +2919,7 @@ pub async fn activate_provider_gateway_for_dir(
         )?;
     }
     codex_account::reapply_experimental_model_policy_if_enabled(profile_dir)?;
+    reapply_deepseek_profile_compaction_fallback(profile_dir, &account)?;
     ensure_runtime_loaded_without_start().await?;
     let runtime = gateway_runtime().lock().await;
     Ok(build_state_snapshot(&runtime))
@@ -3006,7 +3374,7 @@ pub async fn ensure_provider_gateway_for_dir(
         build_provider_gateway_collection_for_profile(profile_dir, &account)?;
     let model_slots = provider_gateway_model_slots(&provider_gateway.upstream_models);
     save_profile_takeover_backup(profile_dir, &key)?;
-    write_local_access_profile_takeover(profile_dir, &collection, Some(&key)).await?;
+    write_local_access_profile_takeover(profile_dir, &collection, Some(&key), false).await?;
     cleanup_provider_gateway_profile_model_overrides(profile_dir)?;
     backup_current_profile_model_before_provider_gateway(
         profile_dir,
@@ -3027,6 +3395,18 @@ pub async fn ensure_provider_gateway_for_dir(
         )?;
     }
     codex_account::reapply_experimental_model_policy_if_enabled(profile_dir)?;
+    reapply_deepseek_profile_compaction_fallback(profile_dir, &account)?;
+    // 实例绑定的是没有 GPT 能力的供应商账号（例如 Grok）时，压缩同样只能走本地流程，
+    // 否则远端压缩会带着旧模型 ID 发出去，压缩结果与当前选择的模型无关。
+    if !collection_pool_provides_gpt_models(&collection)
+        && crate::modules::codex_account::ensure_local_compaction_fallback_for_dir(profile_dir)?
+    {
+        logger::log_codex_api_info(&format!(
+            "[CodexLocalAccess][local-compaction] 供应商账号没有 GPT 能力，已为该 profile 启用本地压缩: profile={}, account_id={}",
+            profile_dir.display(),
+            account.id
+        ));
+    }
 
     let runtime_key = provider_gateway_runtime_key(profile_dir, account_id);
     if let Some(endpoint) = stop_provider_gateway_runtime(&runtime_key).await {
@@ -3210,7 +3590,7 @@ pub(crate) async fn ensure_mixed_model_gateway_for_dir_if_current(
         if !catalog_model_ids.is_empty() {
             backup_current_profile_model_before_provider_gateway(profile_dir, &catalog_model_ids)?;
         }
-        write_local_access_profile_takeover(profile_dir, &collection, Some(&key)).await?;
+        write_local_access_profile_takeover(profile_dir, &collection, Some(&key), false).await?;
         if !catalog_definitions.is_empty() {
             write_local_access_profile_model_catalog_with_definitions(
                 profile_dir,
@@ -3270,7 +3650,7 @@ pub async fn ensure_bound_oauth_local_gateway_for_dir(
     let (collection, key) =
         build_bound_oauth_local_gateway_collection_for_profile(profile_dir, &account)?;
     save_profile_takeover_backup(profile_dir, &key)?;
-    write_local_access_profile_takeover(profile_dir, &collection, Some(&key)).await?;
+    write_local_access_profile_takeover(profile_dir, &collection, Some(&key), false).await?;
     cleanup_provider_gateway_profile_model_overrides(profile_dir)?;
     codex_account::reapply_experimental_model_policy_if_enabled(profile_dir)?;
 
@@ -3380,6 +3760,117 @@ pub fn sync_provider_gateway_auth_files_for_account_in_background(account: Codex
             }
         }
     });
+}
+
+include!("codex_local_access_grok_auth_sync.rs");
+
+/// Also used after source-account deletion: unavailable credentials are removed from every
+/// active auth directory before the delete command reports success. Keep provider settings so
+/// users can remove the orphan member or reauthorize the source account without losing them.
+pub async fn sync_grok_upstream_auth_files(grok_account_id: String) -> Result<(), String> {
+    let result =
+        sync_grok_upstream_auth_files_once(grok_account_id.clone(), GROK_AUTH_SYNC_LOCK_TIMEOUT)
+            .await;
+    if result.is_err() {
+        // Deletion still reports revocation failure, but cleanup must not depend on a user retry.
+        sync_grok_upstream_auth_files_in_background(grok_account_id);
+    }
+    result
+}
+
+async fn sync_grok_upstream_auth_files_once(
+    grok_account_id: String,
+    lock_timeout: Duration,
+) -> Result<(), String> {
+    let grok_account_id = grok_account_id.trim().to_string();
+    if grok_account_id.is_empty() {
+        return Ok(());
+    }
+    // A gateway may already have prepared its auth file but not entered the runtime store yet.
+    // Snapshot only after such launches complete; do not hold the runtime-state lock during I/O.
+    let _lifecycle =
+        tokio::time::timeout(lock_timeout, provider_gateway_lifecycle_lock().lock())
+            .await
+            .map_err(|_| "等待 Grok 网关凭据同步超时，请重试".to_string())?;
+    let mut targets = {
+        let runtimes = provider_gateway_runtime_store().lock().await;
+        runtimes
+            .values()
+            .filter_map(|runtime| {
+                Some((runtime.collection.clone()?, runtime.sidecar_dir.clone()?))
+            })
+            .collect::<Vec<_>>()
+    };
+    let global_collection = gateway_runtime().lock().await.collection.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut errors = Vec::new();
+        match local_access_sidecar_dir() {
+            Ok(base_dir) => {
+                if let Some(collection) = global_collection {
+                    targets.push((collection, base_dir.clone()));
+                }
+                match load_collection_from_disk() {
+                    Ok(Some(collection)) => targets.push((collection, base_dir)),
+                    Ok(None) => {}
+                    Err(error) => errors.push(error),
+                }
+            }
+            Err(error) => errors.push(error),
+        }
+        for (collection, sidecar_dir) in targets {
+            for account_id in effective_sidecar_account_ids(&collection) {
+                let path = sidecar_auths_dir(&sidecar_dir)
+                    .join(codex_account::grok_sidecar_auth_file_name(&account_id));
+                let Some(account) = codex_account::load_account(&account_id) else {
+                    // Do not report successful revocation if a persisted proxy cannot be read
+                    // while its runtime xAI credential still exists.
+                    match path.try_exists() {
+                        Ok(false) => {}
+                        Ok(true) => errors.push(format!(
+                            "无法读取 Grok 供应商账号以同步凭据: {}", account_id
+                        )),
+                        Err(error) => errors.push(format!(
+                            "读取 Grok sidecar 凭据失败: {}: {}", path.display(), error
+                        )),
+                    }
+                    continue;
+                };
+                if !codex_account::is_grok_upstream_provider(&account) {
+                    continue;
+                }
+                if account.upstream_grok_account_id.as_deref().map(str::trim)
+                    != Some(grok_account_id.as_str())
+                {
+                    continue;
+                }
+                match path.try_exists() {
+                    Ok(false) => continue,
+                    Ok(true) => {}
+                    Err(error) => {
+                        errors.push(format!(
+                            "读取 Grok sidecar 凭据失败: {}: {}", path.display(), error
+                        ));
+                        continue;
+                    }
+                };
+                let grok_proxy_url = sidecar_effective_proxy_signature(&collection)
+                    .ok()
+                    .and_then(|signature| signature.proxy_url);
+                if let Err(error) =
+                    prepare_grok_sidecar_auth_file(&account, &path, grok_proxy_url.as_deref())
+                {
+                    errors.push(error);
+                }
+            }
+        }
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors.join("; "))
+        }
+    })
+    .await
+    .map_err(|error| format!("同步 Grok sidecar 凭据任务失败: {}", error))?
 }
 
 pub fn reload_provider_gateway_for_profile_in_background(

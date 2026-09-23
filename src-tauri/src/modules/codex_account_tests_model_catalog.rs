@@ -42,6 +42,150 @@
     }
 
     #[test]
+    fn third_party_deepseek_preset_keeps_its_own_endpoint() {
+        // 供应商可以选择 DeepSeek 预设（身份）却把地址指向第三方中转：此时不能被当成
+        // 官方账号，地址、协议与模型列表必须原样保留（模型名按上游真实 ID）。
+        let mut account = CodexAccount::new_api_key(
+            "third-party-deepseek-key".to_string(),
+            "third-party@example.com".to_string(),
+            "sk-third-party".to_string(),
+            CodexApiProviderMode::Custom,
+            Some("https://api.apikey.fan/v1".to_string()),
+            Some("deepseek".to_string()),
+            Some("DeepSeek 中转".to_string()),
+            vec!["deepseek-chat".to_string()],
+        );
+        account.api_wire_api = Some("chat_completions".to_string());
+
+        assert!(!super::is_deepseek_account(&account));
+        assert!(!super::normalize_deepseek_account(&mut account));
+        assert_eq!(
+            account.api_base_url.as_deref(),
+            Some("https://api.apikey.fan/v1")
+        );
+        assert_eq!(account.api_wire_api.as_deref(), Some("chat_completions"));
+        assert_eq!(
+            account.api_model_catalog,
+            vec!["deepseek-chat".to_string()]
+        );
+    }
+
+    #[test]
+    fn provider_account_access_modes_are_generic() {
+        // 第三方供应商账号也能选择直连上游 / CDP 注入，并按选择决定是否做壳位改写。
+        let mut account = CodexAccount::new_api_key(
+            "third-party-provider-key".to_string(),
+            "third-party@example.com".to_string(),
+            "sk-provider".to_string(),
+            CodexApiProviderMode::Custom,
+            Some("https://api.apikey.fan/v1".to_string()),
+            Some("cmp_provider".to_string()),
+            Some("APIKEY.FUN".to_string()),
+            vec!["deepseek-chat".to_string()],
+        );
+        account.api_wire_api = Some("responses".to_string());
+
+        assert!(!super::account_uses_cdp_model_injection(&account));
+        assert!(!super::account_uses_provider_direct_access(&account));
+        assert!(!super::account_uses_raw_provider_model_ids(&account));
+
+        account.api_instance_access_mode = Some("cdp".to_string());
+        assert!(super::account_uses_cdp_model_injection(&account));
+        assert!(super::account_uses_raw_provider_model_ids(&account));
+
+        account.api_instance_access_mode = Some("direct".to_string());
+        assert!(super::account_uses_provider_direct_access(&account));
+        assert!(!super::account_uses_cdp_model_injection(&account));
+
+        // Chat Completions 不能直连上游（Codex 端只支持 Responses 直连）。
+        account.api_wire_api = Some("chat_completions".to_string());
+        assert!(!super::account_wire_api_is_responses(&account));
+    }
+
+    /// 历史遗留的 Codex/GPT 内置 id（例如 gpt-5.6-sol / gpt-5.6-terra）不能再作为 DeepSeek
+    /// 的客户端可见模型名：客户端会用内置 GPT 元数据生成工具定义，DeepSeek 上游只能把工具调用
+    /// 写成文本标记（DSML）返回，链路无法解析，正文里就会直接出现原始标记。
+    #[test]
+    fn deepseek_account_mappings_drop_legacy_gpt_shell_ids() {
+        let mut account = CodexAccount::new_api_key(
+            "deepseek-legacy-mappings".to_string(),
+            "deepseek@example.com".to_string(),
+            "sk-deepseek".to_string(),
+            CodexApiProviderMode::Custom,
+            Some("https://api.deepseek.com".to_string()),
+            Some("deepseek".to_string()),
+            Some("DeepSeek".to_string()),
+            vec!["deepseek-v4-flash".to_string()],
+        );
+        account.api_wire_api = Some("responses".to_string());
+        account.api_model_mappings = vec![
+            CodexApiModelMapping {
+                client_model: "gpt-5.6-sol".to_string(),
+                upstream_model: "deepseek-v4-flash".to_string(),
+            },
+            CodexApiModelMapping {
+                client_model: "gpt-5.6-terra".to_string(),
+                upstream_model: "deepseek-v4-pro".to_string(),
+            },
+            CodexApiModelMapping {
+                client_model: "gpt-5.6-luna".to_string(),
+                upstream_model: "deepseek-v4-flash".to_string(),
+            },
+            CodexApiModelMapping {
+                client_model: "custom-alias".to_string(),
+                upstream_model: "deepseek-v4-flash".to_string(),
+            },
+        ];
+
+        assert!(super::normalize_deepseek_account(&mut account));
+
+        let client_models: Vec<&str> = account
+            .api_model_mappings
+            .iter()
+            .map(|mapping| mapping.client_model.as_str())
+            .collect();
+        for legacy in ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"] {
+            assert!(
+                !client_models
+                    .iter()
+                    .any(|model| model.eq_ignore_ascii_case(legacy)),
+                "历史 Codex/GPT 模型 id 不能继续作为 DeepSeek 的客户端可见名: {legacy}"
+            );
+        }
+        assert!(
+            client_models
+                .iter()
+                .any(|model| model.eq_ignore_ascii_case("custom-alias")),
+            "用户自定义别名不能被清理"
+        );
+        for expected in [
+            "gpt-5.5",
+            "gpt-5.4",
+            "gpt-5.4-mini",
+            "deepseek-flash",
+            "deepseek-v4-flash",
+            "deepseek-v4-pro",
+            "deepseek-v4-flash-vision-exp",
+        ] {
+            assert!(
+                client_models
+                    .iter()
+                    .any(|model| model.eq_ignore_ascii_case(expected)),
+                "缺少默认模型映射: {expected}"
+            );
+        }
+        // 目录壳位仍指向 DeepSeek 上游；历史 GPT 模型 id 不再被解析成 DeepSeek 模型。
+        assert_eq!(
+            super::resolve_account_upstream_model(&account, "gpt-5.5"),
+            "deepseek-flash"
+        );
+        assert_eq!(
+            super::resolve_account_upstream_model(&account, "gpt-5.6-sol"),
+            "gpt-5.6-sol"
+        );
+    }
+
+    #[test]
     fn api_model_mappings_normalize_and_resolve_upstream() {
         let mappings = super::normalize_api_model_mappings(vec![
             CodexApiModelMapping {
@@ -312,7 +456,8 @@
         super::apply_deepseek_config_overrides(&mut doc, &base_dir);
         let applied = crate::modules::codex_config_format::codex_config_doc_to_string(&mut doc);
         assert!(applied.contains("remote_compaction_v2 = false"));
-        assert!(applied.contains("token_budget = true"));
+        // `token_budget = true` 会让客户端把压缩换成不产摘要的窗口重置，必须保持清除状态。
+        assert!(!applied.contains("token_budget"));
         assert!(applied.contains("js_repl = false"));
 
         assert!(super::restore_deepseek_config_overrides(&mut doc, &base_dir));
@@ -333,11 +478,106 @@
         super::apply_deepseek_config_overrides(&mut doc, &base_dir);
         let applied = crate::modules::codex_config_format::codex_config_doc_to_string(&mut doc);
         assert!(applied.contains("remote_compaction_v2 = false"));
+        assert!(!applied.contains("token_budget"));
 
         assert!(super::restore_deepseek_config_overrides(&mut doc, &base_dir));
         let restored = crate::modules::codex_config_format::codex_config_doc_to_string(&mut doc);
         assert!(restored.contains("remote_compaction_v2 = true"));
         assert!(restored.contains("token_budget = false"));
+        fs::remove_dir_all(&base_dir).expect("cleanup temp dir");
+    }
+
+    #[test]
+    fn deepseek_profile_overrides_reapply_after_gateway_takeover() {
+        let base_dir = make_temp_dir("codex-deepseek-gateway-fallback");
+        // 接管流程还没写入 profile 配置时不生成残缺配置。
+        assert!(!super::reapply_deepseek_config_overrides_for_dir(&base_dir).expect("skip missing"));
+        assert!(!super::get_config_toml_path(&base_dir).exists());
+
+        let config_path = super::get_config_toml_path(&base_dir);
+        // 模拟实例网关接管后的 profile：网关运行账号 + 已被接管流程清掉的 DeepSeek 兜底。
+        crate::modules::codex_config_format::write_codex_config_toml_atomic(
+            &config_path,
+            "model = \"gpt-5.6-sol\"\n\n[features]\njs_repl = false\n\n[model_providers.codex_local_access]\nname = \"OpenAI\"\n",
+        )
+        .expect("write config");
+
+        assert!(super::reapply_deepseek_config_overrides_for_dir(&base_dir).expect("reapply"));
+        let applied = fs::read_to_string(&config_path).expect("read config");
+        assert!(applied.contains("remote_compaction_v2 = false"));
+        assert!(!applied.contains("token_budget"));
+        assert!(applied.contains("js_repl = false"));
+        assert!(applied.contains("name = \"OpenAI\""));
+        assert!(base_dir.join(super::DEEPSEEK_COMPACTION_BACKUP_FILE).exists());
+
+        // 已经补写过时不重复改写。
+        assert!(!super::reapply_deepseek_config_overrides_for_dir(&base_dir).expect("idempotent"));
+
+        // 切走时仍按备份还原：兜底键被清掉，用户原有设置保留。
+        let mut doc = crate::modules::codex_config_format::read_codex_config_doc_from_str(&applied)
+            .expect("parse config");
+        assert!(super::restore_deepseek_config_overrides(&mut doc, &base_dir));
+        let restored = crate::modules::codex_config_format::codex_config_doc_to_string(&mut doc);
+        assert!(!restored.contains("remote_compaction_v2"));
+        assert!(!restored.contains("token_budget"));
+        assert!(restored.contains("js_repl = false"));
+        assert!(restored.contains("name = \"OpenAI\""));
+        fs::remove_dir_all(&base_dir).expect("cleanup temp dir");
+    }
+
+    #[test]
+    fn local_compaction_fallback_forwards_profile_and_is_idempotent() {
+        let base_dir = make_temp_dir("codex-local-compaction-fallback");
+        // 接管还没写入 profile 配置时跳过，避免生成没有 provider 的残缺配置。
+        assert!(!super::ensure_local_compaction_fallback_for_dir(&base_dir).expect("skip missing"));
+
+        let config_path = super::get_config_toml_path(&base_dir);
+        crate::modules::codex_config_format::write_codex_config_toml_atomic(
+            &config_path,
+            "model = \"gpt-5.6-sol\"\nservice_tier = \"priority\"\nweb_search = \"live\"\n\n[features]\njs_repl = false\n\n[model_providers.codex_local_access]\nname = \"OpenAI\"\n",
+        )
+        .expect("write config");
+
+        assert!(super::ensure_local_compaction_fallback_for_dir(&base_dir).expect("apply"));
+        let applied = fs::read_to_string(&config_path).expect("read config");
+        assert!(applied.contains("remote_compaction_v2 = false"));
+        assert!(!applied.contains("token_budget"));
+        // 只动压缩键：账号池里的官方账号仍要保留 service_tier / web_search 等原有设置。
+        assert!(applied.contains("service_tier = \"priority\""));
+        assert!(applied.contains("web_search = \"live\""));
+        assert!(!applied.contains("web_search = \"disabled\""));
+
+        assert!(!super::ensure_local_compaction_fallback_for_dir(&base_dir).expect("idempotent"));
+        assert_eq!(
+            fs::read_to_string(&config_path).expect("read config"),
+            applied
+        );
+        fs::remove_dir_all(&base_dir).expect("cleanup temp dir");
+    }
+
+    #[test]
+    fn local_compaction_fallback_clears_legacy_token_budget_override() {
+        let base_dir = make_temp_dir("codex-local-compaction-legacy-cleanup");
+        let config_path = super::get_config_toml_path(&base_dir);
+        // 复现 1.3.54 / 1.3.55 写下的受管状态：远端压缩关闭 + token_budget 打开（换窗口模式）。
+        crate::modules::codex_config_format::write_codex_config_toml_atomic(
+            &config_path,
+            "model = \"gpt-5.6-sol\"\n\n[features]\nremote_compaction_v2 = false\ntoken_budget = true\njs_repl = false\n",
+        )
+        .expect("write config");
+
+        assert!(super::ensure_local_compaction_fallback_for_dir(&base_dir).expect("apply"));
+        let applied = fs::read_to_string(&config_path).expect("read config");
+        assert!(applied.contains("remote_compaction_v2 = false"));
+        assert!(!applied.contains("token_budget"));
+        assert!(applied.contains("js_repl = false"));
+
+        // 清理后保持幂等，避免每次启动都改写配置。
+        assert!(!super::ensure_local_compaction_fallback_for_dir(&base_dir).expect("idempotent"));
+        assert_eq!(
+            fs::read_to_string(&config_path).expect("read config"),
+            applied
+        );
         fs::remove_dir_all(&base_dir).expect("cleanup temp dir");
     }
 
@@ -1084,8 +1324,33 @@ model_catalog_json = "cockpit-provider-model-catalog.json"
             None,
             None,
         )
-        .expect_err("non-DeepSeek account rejects access mode");
-        assert!(access_error.contains("DeepSeek"));
+        .expect("第三方供应商账号同样支持接入方式");
+        assert_eq!(
+            access_error.api_instance_access_mode.as_deref(),
+            Some("gateway")
+        );
+
+        // 直连上游需要 Responses；Chat Completions 账号会被拒绝。
+        let mut chat_account = CodexAccount::new_api_key(
+            "chat-only-provider".to_string(),
+            "chat-only@example.com".to_string(),
+            "sk-chat-only".to_string(),
+            CodexApiProviderMode::Custom,
+            Some("https://relay.example.com/v1".to_string()),
+            Some("cmp_chat_only".to_string()),
+            Some("Relay Chat".to_string()),
+            vec!["kimi-k2.6".to_string()],
+        );
+        chat_account.api_wire_api = Some("chat_completions".to_string());
+        save_account(&chat_account).expect("save chat account");
+        let direct_error = update_account_instance_access(
+            &chat_account.id,
+            Some("direct".to_string()),
+            None,
+            None,
+        )
+        .expect_err("Chat Completions 账号拒绝直连上游");
+        assert!(direct_error.contains("Chat Completions"));
     }
 
     #[test]
