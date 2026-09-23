@@ -1,7 +1,7 @@
 {
   "name": "ai-switch",
   "private": true,
-  "version": "0.2.2-rc.2",
+  "version": "0.2.2-rc.3",
   "type": "module",
   "scripts": {
     "dev": "vite",
