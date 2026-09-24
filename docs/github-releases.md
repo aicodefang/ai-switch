@@ -1,16 +1,15 @@
 # GitHub Releases
 
-`Desktop release` (`.github/workflows/release.yml`) builds all packages on GitHub-hosted runners. No local build is needed.
+`Desktop release` (`.github/workflows/release.yml`) builds the supported release packages on GitHub-hosted runners. No local build is needed.
 
 ## Packages
 
 | Platform | Architectures | Release assets |
 | --- | --- | --- |
-| macOS | Apple Silicon ARM64, Intel x64 | `.dmg`, `.app.tar.gz` |
-| Windows | ARM64, x64 | NSIS `-setup.exe` |
-| Linux | ARM64, x64 | `.deb`, `.rpm`, `.AppImage` |
+| macOS | Apple Silicon ARM64 | `.dmg`, `.app.tar.gz` |
+| Windows | x64 | NSIS `-setup.exe` |
 
-The matrix uses native runners for each architecture. x64 means 64-bit x86; 32-bit x86/ARMv7 are not included. Windows ARM64 contains a native ARM64 app; its NSIS installer runs through Windows' x86 emulation. Linux is built on Ubuntu 22.04 to keep its glibc baseline at 2.35. AppImages still require a compatible host system; they do not bundle glibc.
+The matrix uses native runners for the published architectures. x64 means 64-bit x86; 32-bit x86/ARMv7 are not included.
 
 Each release includes `SHA256SUMS.txt` and a `BUILD-<platform>-<arch>.txt` file for every target. The build files identify the source commit, Rust target and macOS notarization status. Windows installers are unsigned until a Windows code-signing certificate is configured.
 
@@ -18,7 +17,7 @@ Each release includes `SHA256SUMS.txt` and a `BUILD-<platform>-<arch>.txt` file 
 
 1. Update `package.json` to an unused release version, then run `npm run sync-version` and `npm install --package-lock-only` to synchronize the manifests and lockfile. Commit the version changes.
 2. Push a matching tag, for example `v0.2.2` for version `0.2.2`. The workflow must already be present in the tagged commit.
-3. Open Actions -> Desktop release to follow the six builds. Once every build and package verification succeeds, the workflow publishes the packages to Releases.
+3. Open Actions -> Desktop release to follow the macOS ARM64 and Windows x64 builds. Once every build and package verification succeeds, the workflow publishes the packages to Releases.
 
 Alternatively, after the workflow is merged into the default branch (`main`), open Actions -> Desktop release -> Run workflow and select the source branch. The tag is derived from that branch's package version and created only after all builds pass. Enable `prerelease` for a preview. Versions containing a prerelease suffix are automatically marked as prereleases.
 
@@ -28,7 +27,7 @@ The existing Windows package workflow remains a separate main-branch smoke build
 
 ### Retry publishing without rebuilding
 
-If all six builds passed but publishing failed, push a `publish-<original-tag>` tag on a commit containing `.github/workflows/recover-release.yml` (for example, `publish-v0.2.2-rc.1`). This starts `Recover desktop release`, which finds the original release run, requires all six build jobs and the preparation job to have succeeded, and downloads its existing Actions artifacts. It validates their source commit, regenerates checksums and publishes the original release. It does not rebuild packages, move the original tag, or overwrite a published release. The original artifacts must still be within their 14-day retention period.
+If both builds passed but publishing failed, push a `publish-<original-tag>` tag on a commit containing `.github/workflows/recover-release.yml` (for example, `publish-v0.2.2-rc.1`). This starts `Recover desktop release`, which finds the original release run, requires both build jobs and the preparation job to have succeeded, and downloads its existing Actions artifacts. It validates their source commit, regenerates checksums and publishes the original release. It does not rebuild packages, move the original tag, or overwrite a published release. The original artifacts must still be within their 14-day retention period.
 
 ## macOS signing
 
@@ -57,4 +56,4 @@ Secrets are only exposed to the signing steps in the macOS jobs. Releases run on
 
 - [GitHub-hosted runner labels](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)
 - [Tauri macOS signing and notarization](https://v2.tauri.app/distribute/sign/macos/)
-- [Tauri Windows installers and ARM64 support](https://v2.tauri.app/distribute/windows-installer/)
+- [Tauri Windows installers](https://v2.tauri.app/distribute/windows-installer/)

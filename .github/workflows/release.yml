@@ -89,31 +89,11 @@ jobs:
             runner: macos-15
             target: aarch64-apple-darwin
             bundles: app,dmg
-          - platform: macos
-            arch: x64
-            runner: macos-15-intel
-            target: x86_64-apple-darwin
-            bundles: app,dmg
-          - platform: windows
-            arch: aarch64
-            runner: windows-11-arm
-            target: aarch64-pc-windows-msvc
-            bundles: nsis
           - platform: windows
             arch: x64
             runner: windows-2022
             target: x86_64-pc-windows-msvc
             bundles: nsis
-          - platform: linux
-            arch: aarch64
-            runner: ubuntu-22.04-arm
-            target: aarch64-unknown-linux-gnu
-            bundles: deb,rpm,appimage
-          - platform: linux
-            arch: x64
-            runner: ubuntu-22.04
-            target: x86_64-unknown-linux-gnu
-            bundles: deb,rpm,appimage
     defaults:
       run:
         shell: bash
@@ -250,18 +230,10 @@ jobs:
         run: |
           node <<'NODE'
           const fs = require('node:fs');
-          const files = fs.readdirSync('.');
-          for (const suffix of ['.dmg', '.app.tar.gz', '-setup.exe', '.deb', '.rpm', '.AppImage']) {
-            if (files.filter(name => name.endsWith(suffix)).length !== 2) {
-              throw new Error(`Expected both architectures for ${suffix}`);
-            }
-          }
-          for (const platform of ['macos', 'windows', 'linux']) {
-            for (const arch of ['aarch64', 'x64']) {
-              const info = fs.readFileSync(`BUILD-${platform}-${arch}.txt`, 'utf8');
-              if (!info.includes(`Commit: ${process.env.GITHUB_SHA}\n`)) {
-                throw new Error(`Wrong build commit for ${platform}-${arch}`);
-              }
+          for (const [platform, arch] of [['macos', 'aarch64'], ['windows', 'x64']]) {
+            const info = fs.readFileSync(`BUILD-${platform}-${arch}.txt`, 'utf8');
+            if (!info.includes(`Commit: ${process.env.GITHUB_SHA}\n`)) {
+              throw new Error(`Wrong build commit for ${platform}-${arch}`);
             }
           }
           NODE

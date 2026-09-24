@@ -51,7 +51,7 @@
 
 ## 本地开发
 
-多平台安装包可通过 GitHub Actions 自动构建并发布到 Releases，覆盖 macOS、Windows、Linux 的 ARM64/x64。触发方式及 macOS 签名、公证配置见 [GitHub 发布指南](docs/github-releases.md)。
+安装包可通过 GitHub Actions 自动构建并发布到 Releases，当前发布目标为 macOS Apple Silicon ARM64 和 Windows x64。触发方式及 macOS 签名、公证配置见 [GitHub 发布指南](docs/github-releases.md)。
 
 需要 Node.js 22、Rust stable、Go 1.26+，以及对应操作系统的 Tauri 构建环境。Go 用于构建随应用分发的 API 服务辅助进程。
 

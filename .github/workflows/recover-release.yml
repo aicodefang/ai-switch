@@ -21,7 +21,7 @@ jobs:
       GH_REPO: ${{ github.repository }}
     steps:
       - uses: actions/checkout@v4
-      - name: Find and verify the original six-platform build
+      - name: Find and verify the original release build
         id: source
         shell: bash
         run: |
@@ -39,7 +39,7 @@ jobs:
           gh api "repos/$GH_REPO/actions/runs/$run_id/jobs?per_page=100" > "$RUNNER_TEMP/jobs.json"
           node -e '
             const jobs = require(process.argv[1]).jobs;
-            for (const name of ["prepare", ...["macos", "windows", "linux"].flatMap(p => ["aarch64", "x64"].map(a => `Build ${p} ${a}`))]) {
+            for (const name of ["prepare", "Build macos aarch64", "Build windows x64"]) {
               if (!jobs.some(j => j.name === name && j.conclusion === "success")) throw new Error(`Build not successful: ${name}`);
             }
           ' "$RUNNER_TEMP/jobs.json"
@@ -58,14 +58,10 @@ jobs:
         run: |
           node <<'NODE'
           const fs = require('node:fs');
-          const files = fs.readdirSync('.');
-          for (const suffix of ['.dmg', '.app.tar.gz', '-setup.exe', '.deb', '.rpm', '.AppImage']) {
-            if (files.filter(name => name.endsWith(suffix)).length !== 2) throw new Error(`Missing architecture for ${suffix}`);
-          }
-          for (const platform of ['macos', 'windows', 'linux']) {
-            for (const arch of ['aarch64', 'x64']) {
-              const info = fs.readFileSync(`BUILD-${platform}-${arch}.txt`, 'utf8');
-              if (!info.includes(`Commit: ${process.env.SOURCE_SHA}\n`)) throw new Error('Artifact commit mismatch');
+          for (const [platform, arch] of [['macos', 'aarch64'], ['windows', 'x64']]) {
+            const info = fs.readFileSync(`BUILD-${platform}-${arch}.txt`, 'utf8');
+            if (!info.includes(`Commit: ${process.env.SOURCE_SHA}\n`)) {
+              throw new Error(`Artifact commit mismatch for ${platform}-${arch}`);
             }
           }
           NODE
