@@ -4,7 +4,11 @@ permissions:
   contents: read
 jobs:
   desktop:
-    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, windows-2022]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -15,9 +19,11 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.27'
+          cache-dependency-path: sidecars/cockpit-cliproxy/go.sum
       - run: npm ci
       - run: npm test
       - run: npm run build
+      - run: npm run test:go
       - run: cargo check -p cockpit-tools --locked
         env:
           AIMODEL_DIRECT_SWIFT: '1'
