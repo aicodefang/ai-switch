@@ -2365,14 +2365,10 @@ pub fn start_codex_with_args_and_env(
                                     ));
                                     return Err(codex_managed_store_launch_unsafe_error(
                                         &err.to_string(),
-                                        &ps_err,
                                         &format!(
-                                            "package_identity_error={}; {}",
+                                            "{}; package_identity_error={}",
+                                            ps_err,
                                             package_err,
-                                            codex_managed_store_launch_diagnostics(
-                                                &launch_path,
-                                                codex_home_trimmed,
-                                            )
                                         ),
                                     ));
                                 }
@@ -2414,14 +2410,14 @@ pub fn start_codex_with_args_and_env(
             ));
             Ok(child.id())
         } else {
+            let fallback_reason = if launched_via_package_identity {
+                "Package-identity launch returned success but no managed instance matched within 15s"
+            } else {
+                "PowerShell exec returned success but no managed instance matched within 15s"
+            };
             let error = codex_managed_store_launch_unsafe_error(
                 "WindowsApps direct launch denied",
-                if launched_via_package_identity {
-                    "Package-identity launch returned success but no managed instance matched within 15s"
-                } else {
-                    "PowerShell exec returned success but no managed instance matched within 15s"
-                },
-                &codex_managed_store_launch_diagnostics(&launch_path, codex_home_trimmed),
+                fallback_reason,
             );
             crate::modules::logger::log_warn(&format!(
                 "[Codex Start] fallback launch did not produce a matching managed instance; default PID fallback blocked: codex_home={}",
