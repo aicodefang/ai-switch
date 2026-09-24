@@ -2,7 +2,7 @@
 
 <img src="app-icon.svg" alt="ai-switch Logo" width="96" height="96" />
 
-面向 Codex 和 Claude Code 的桌面配置管理工具，集中管理账号、API 接口、供应商和模型，方便在不同账号与配置之间切换。
+面向 Codex、Claude Code 和 ZCode 的桌面配置管理工具，集中管理账号、API 接口、供应商和模型，方便在不同账号与配置之间切换。
 
 ## 功能
 
@@ -19,6 +19,11 @@
 - 支持 OAuth、API 密钥和本地 JSON 接入。
 - 管理供应商、接口地址、密钥和模型配置。
 - 管理多个账号与配置，按使用场景切换。
+
+### ZCode 账号与实例
+
+- 支持 OAuth、API Key、本地及 JSON 导入、额度刷新和实例管理。
+- 可从侧栏进入，在设置中配置客户端路径和刷新周期。
 
 ### 供应商与模型
 

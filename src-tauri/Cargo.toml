@@ -1,6 +1,6 @@
 [package]
 name = "cockpit-tools"
-version = "0.2.6"
+version = "0.2.7"
 description = "ai-switch"
 authors = ["jlcodes"]
 license = "CC-BY-NC-SA-4.0"

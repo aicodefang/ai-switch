@@ -800,7 +800,7 @@ fn resolve_tray_entries() -> Vec<TrayMenuEntry> {
     let layout = crate::modules::tray_layout::load_tray_layout();
     let visible: Vec<_> = sanitize_platform_list(&layout.tray_platform_ids)
         .into_iter()
-        .filter(|platform| matches!(platform.as_str(), "codex" | "claude_manager"))
+        .filter(|platform| matches!(platform.as_str(), "codex" | "claude_manager" | "zcode"))
         .collect();
     let visible_set: HashSet<PlatformId> = visible.iter().copied().collect();
 

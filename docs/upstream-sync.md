@@ -4,7 +4,7 @@
 
 1. 保存当前提交为回退点，在指定开发分支复制上游完整源码。保留 Git 历史、用户数据和本机构建缓存。
 2. Rust、Go 和共享前端模块成套同步；不得只复制调用方、漏掉辅助函数，也不为隐藏平台而删除底层实现。
-3. 在产品层限制 Codex/Claude 入口。广告、赞助、公告与营销入口不显示，后台公告及远端配置加载关闭；保留模块本体以维护依赖完整性。
+3. 在产品层仅开放 Codex、Claude 和 ZCode 入口。广告、赞助、公告与营销入口不显示，后台公告及远端配置加载关闭；保留模块本体以维护依赖完整性。
 4. 恢复 ai-switch 名称、图标、应用标识、深链接和 `.aimodel_switch` 数据目录。保留现有配置格式；不用上游应用的数据目录。
 5. Codex API Key 入口顺序为自定义、OpenAI Official、Azure OpenAI、tuantuianai。tuantuan 和 tuantuanai 都是同一供应商的兼容别名；地址为 https://hk1.heliumlabz.com 和 https://openai.heliumlabz.com。
 6. 保留 OAuth、Token/JSON、API Key、模型、实例与本地 API 服务。恢复凭据占位符，不提交 Google OAuth 密钥或用户配置。
