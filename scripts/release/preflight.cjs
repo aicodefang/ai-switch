@@ -81,12 +81,20 @@ if (!hasFlag('--skip-build')) {
   });
 }
 
+if (!hasFlag('--skip-go')) {
+  steps.push({
+    name: 'Go sidecar tests',
+    command: 'npm',
+    args: ['run', 'test:go'],
+  });
+}
+
 if (!hasFlag('--skip-cargo')) {
   steps.push({
     name: 'Rust cargo check',
     command: 'cargo',
-    args: ['check'],
-    cwd: path.join(process.cwd(), 'src-tauri'),
+    args: ['check', '-p', 'cockpit-tools', '--locked'],
+    cwd: process.cwd(),
   });
 }
 
@@ -94,8 +102,8 @@ if (!hasFlag('--skip-cargo-test')) {
   steps.push({
     name: 'Rust cargo test (lib)',
     command: 'cargo',
-    args: ['test', '--lib'],
-    cwd: path.join(process.cwd(), 'src-tauri'),
+    args: ['test', '-p', 'cockpit-tools', '--lib', '--locked'],
+    cwd: process.cwd(),
     env: {
       RUST_TEST_THREADS: '1',
     },
